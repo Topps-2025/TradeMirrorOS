@@ -21,7 +21,7 @@ body:
     id: contract
     attributes:
       label: Contract impact
-      description: Does this affect CLI, Gateway, session flow, storage schema, or Docker usage?
+      description: Does this affect CLI, Gateway, session flow, storage schema, or deployment usage?
   - type: textarea
     id: alternatives
     attributes:

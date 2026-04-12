@@ -328,51 +328,6 @@ python .\finance-journal-orchestrator\scripts\finance_journal_session_agent.py `
 
 这样 OpenClaw 每轮只需要稳定透传 `session_key + text`，skill 自己处理当前到底是在起草、续写、落账还是二次沉淀。
 
-## Docker 用法
-
-如果你想把这套 skill 当作开源项目快速拉起，可以直接使用仓库根目录的 `Dockerfile`、`.dockerignore`、`compose.yaml` 和 `docker/entrypoint.sh`。
-
-### 1. 直接构建镜像
-
-```powershell
-docker build -t finance-journal:local .
-```
-
-### 2. 用命名卷保存运行时账本
-
-```powershell
-docker volume create finance-journal-data
-
-docker run --rm -it `
-  -v finance-journal-data:/app/_runtime `
-  finance-journal:local init
-
-docker run --rm -it `
-  -v finance-journal-data:/app/_runtime `
-  finance-journal:local trade import-statement --file /app/examples/statement_rows.csv --trade-date 20260415 --session-key qq:user_a
-```
-
-### 3. 调用 Gateway / Session Agent
-
-```powershell
-docker run --rm -it `
-  -v finance-journal-data:/app/_runtime `
-  finance-journal:local gateway --command "交易 导入 文件=/app/examples/statement_rows.csv session=qq:user_a trade_date=20260415"
-
-docker run --rm -it `
-  -v finance-journal-data:/app/_runtime `
-  finance-journal:local session-agent --session-key qq:user_a --trade-date 20260410 --text "今天买了603083"
-```
-
-### 4. 用 Compose 跑一次性命令
-
-```powershell
-docker compose run --rm finance-journal init
-docker compose run --rm finance-journal session-agent --session-key qq:user_a --trade-date 20260410 --text "今天买了603083"
-```
-
-镜像默认把 `_runtime` 放在容器内的 `/app/_runtime`，建议始终挂卷，不要把运行时账本直接 bake 进镜像层。
-
 ## 开源仓库布局
 
 当前仓库已补齐一套更适合 GitHub 开源协作的基础文件：
@@ -384,7 +339,7 @@ docker compose run --rm finance-journal session-agent --session-key qq:user_a --
 - `SUPPORT.md`：使用支持入口
 - `.github/ISSUE_TEMPLATE/`：Bug / Feature 模板
 - `.github/pull_request_template.md`：PR 模板
-- `.github/workflows/ci.yml`：CI + Docker build 校验
+- `.github/workflows/ci.yml`：CI 测试校验
 - `.github/dependabot.yml`：依赖与 GitHub Actions 更新策略
 
 ## 说明

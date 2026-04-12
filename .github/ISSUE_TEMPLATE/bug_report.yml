@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in the skill, CLI, session flow, or Docker usage.
+description: Report a reproducible problem in the skill, CLI, session flow, or deployment usage.
 title: "[Bug] "
 labels: []
 body:
@@ -33,7 +33,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: OS, Python version, runtime root, Docker usage, and whether market data is enabled.
+      description: OS, Python version, runtime root, and whether market data is enabled.
     validations:
       required: true
   - type: textarea

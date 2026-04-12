@@ -1,7 +1,7 @@
 # Finance Journal 状态与更新记录
 
 更新日期：2026-04-12
-当前状态版本：`0.2.5`
+当前状态版本：`0.2.6`
 
 这是一份统一文档，用来同时记录：
 
@@ -251,6 +251,18 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py --root .\_r
 这说明“先轮询新闻，再生成晨报”的节奏已经接进调度器。
 
 ## 五、版本更新记录
+
+## `0.2.6` | 2026-04-12
+
+本次更新重点放在“撤回 Docker 交付层，保留 GitHub 开源仓库基础设施”。
+
+调整：
+
+- 删除 `Dockerfile / .dockerignore / compose.yaml / docker/entrypoint.sh`
+- `.github/workflows/ci.yml` 回到以源码编译与单元测试为主
+- README 移除 Docker 使用说明，避免当前仓库对容器环境形成额外承诺
+- 保留 `LICENSE / CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md / SUPPORT.md`
+- 保留 Issue / PR 模板、CI、Dependabot 与依赖清单
 
 ## `0.2.5` | 2026-04-12
 
