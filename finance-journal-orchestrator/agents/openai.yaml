@@ -1,0 +1,3 @@
+interface:
+  display_name: "Finance Journal Orchestrator"
+  short_description: "Coordinate conversation-first trade journaling, plan memory, evolution reminders, and behavior review"

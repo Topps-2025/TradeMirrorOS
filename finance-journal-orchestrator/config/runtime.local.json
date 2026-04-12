@@ -1,0 +1,108 @@
+{
+  "schedules": {
+    "event_fetch_times": ["07:55", "12:30", "15:10", "20:30"],
+    "fetch_events_before_morning_brief": true
+  },
+  "url_sources": {
+    "enabled": true,
+    "timeout_seconds": 20,
+    "user_agent": "Mozilla/5.0 (FinanceJournalBot)",
+    "adapters": [
+      {
+        "name": "wallstreetcn-live-global",
+        "enabled": true,
+        "kind": "macro",
+        "event_type": "macro",
+        "source": "wallstreetcn",
+        "url_template": "https://wallstreetcn.com/live",
+        "parser": {
+          "mode": "html_embedded_json",
+          "limit": 40,
+          "script_markers": ["__SSR__", "\"lives\":"],
+          "items_path": "state.default.children.default.data.lives",
+          "headline_path": "title",
+          "summary_path": "content_text",
+          "published_path": "display_time",
+          "url_path": "uri",
+          "drop_patterns": ["下载APP", "版权声明", "沪ICP备", "增值电信业务经营许可证"]
+        }
+      },
+      {
+        "name": "cls-telegraph",
+        "enabled": true,
+        "kind": "macro",
+        "event_type": "macro",
+        "source": "cls",
+        "url_template": "https://www.cls.cn/telegraph",
+        "parser": {
+          "mode": "html_timeline",
+          "fallback_mode": "html_embedded_json",
+          "limit": 60,
+          "min_headline_length": 8,
+          "summary_lines": 2,
+          "ignore_tokens": ["财联社电报", "APP", "打开APP", "详情"],
+          "drop_patterns": ["举报电话", "互联网新闻信息服务许可证", "沪ICP备", "©2018-", "下载财联社", "打开APP阅读", "电报解读", "解锁直达"],
+          "fallback_parser": {
+            "script_markers": ["telegraphList", "\"title\":\"", "\"brief\":\""],
+            "items_path": "props.initialState.telegraph.telegraphList",
+            "headline_path": "title",
+            "summary_path": "brief",
+            "published_path": "ctime",
+            "url_path": "shareurl"
+          }
+        }
+      },
+      {
+        "name": "jin10-home-flash",
+        "enabled": true,
+        "kind": "macro",
+        "event_type": "macro",
+        "source": "jin10",
+        "url_template": "https://www.jin10.com/",
+        "parser": {
+          "mode": "html_timeline",
+          "limit": 60,
+          "min_headline_length": 8,
+          "summary_lines": 2,
+          "ignore_tokens": ["金十数据", "APP", "详情", "打开APP"],
+          "drop_patterns": ["登录后查看更多快讯", "TradingHero", "订阅", "下载APP", "广告合作", "隐私政策", "用户协议", "跟踪中东局势动态", "推荐阅读", "换一批", "相关链接"]
+        }
+      },
+      {
+        "name": "eastmoney-kuaixun",
+        "enabled": true,
+        "kind": "macro",
+        "event_type": "macro",
+        "source": "eastmoney",
+        "url_template": "https://np-weblist.eastmoney.com/comm/web/getFastNewsZhibo?client=web&biz=web_724&sortEnd=&pageSize=50&req_trace={now_ms}",
+        "parser": {
+          "mode": "json_list",
+          "limit": 50,
+          "items_path": "data.fastNewsList",
+          "headline_path": "title",
+          "summary_path": "summary",
+          "published_path": "showTime",
+          "item_url_template": "https://finance.eastmoney.com/a/{code}.html",
+          "drop_patterns": ["点击查看全文", "评论", "分享"]
+        }
+      },
+      {
+        "name": "10jqka-realtime-news",
+        "enabled": true,
+        "kind": "macro",
+        "event_type": "macro",
+        "source": "10jqka",
+        "url_template": "http://stock.10jqka.com.cn/thsgd/ywjh.js",
+        "parser": {
+          "mode": "json_list",
+          "limit": 50,
+          "items_path": "item",
+          "headline_path": "title",
+          "summary_path": "content",
+          "published_path": "pubDate",
+          "url_path": "curl"
+        }
+      }
+    ]
+  }
+}
