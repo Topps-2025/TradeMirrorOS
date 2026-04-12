@@ -1,7 +1,7 @@
 # Finance Journal 状态与更新记录
 
 更新日期：2026-04-12
-当前状态版本：`0.2.4`
+当前状态版本：`0.2.5`
 
 这是一份统一文档，用来同时记录：
 
@@ -251,6 +251,24 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py --root .\_r
 这说明“先轮询新闻，再生成晨报”的节奏已经接进调度器。
 
 ## 五、版本更新记录
+
+## `0.2.5` | 2026-04-12
+
+本次更新重点放在“GitHub 开源仓库布局 + License + Docker 交付”。
+
+新增 / 强化：
+
+- 新增 `LICENSE`，当前默认采用 MIT License
+- 补齐 `CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md / SUPPORT.md`
+- 新增 GitHub 协作文件：
+  - `.github/ISSUE_TEMPLATE/`
+  - `.github/pull_request_template.md`
+  - `.github/workflows/ci.yml`
+  - `.github/dependabot.yml`
+- 新增 `requirements.txt`
+- 新增 `Dockerfile / .dockerignore / compose.yaml / docker/entrypoint.sh`
+- README 新增 Docker 运行方式与开源仓库协作说明
+- 本地 Git 仓库已初始化，并为云端推送预留远端接入
 
 ## `0.2.4` | 2026-04-12
 

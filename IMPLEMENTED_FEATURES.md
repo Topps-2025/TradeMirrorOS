@@ -166,6 +166,26 @@
 - `python -m compileall finance_journal_core finance-journal-orchestrator\scripts tests`
 - `python -m unittest discover -s tests -v`
 - 交割单导入 -> 会话追问 -> 继续 enrich 的本地闭环 smoke test 已覆盖
+
+## 九、开源仓库与部署基础设施（已实现）
+
+- 开源仓库基础文件：
+  - `LICENSE`
+  - `CONTRIBUTING.md`
+  - `CODE_OF_CONDUCT.md`
+  - `SECURITY.md`
+  - `SUPPORT.md`
+- GitHub 协作布局：
+  - `.github/ISSUE_TEMPLATE/`
+  - `.github/pull_request_template.md`
+  - `.github/workflows/ci.yml`
+  - `.github/dependabot.yml`
+- Docker 交付：
+  - `Dockerfile`
+  - `.dockerignore`
+  - `compose.yaml`
+  - `docker/entrypoint.sh`
+- 依赖安装入口：`requirements.txt`
 - 当前本地测试总数：`24`
 - 回归测试已覆盖：
   - 股票代码不再误判为日期

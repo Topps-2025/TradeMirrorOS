@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a new workflow, contract, analytics capability, or deployment improvement.
+title: "[Feature] "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What user or maintainer problem does this request address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the desired behavior or interface.
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract impact
+      description: Does this affect CLI, Gateway, session flow, storage schema, or Docker usage?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. Share any alternative designs or tradeoffs.
