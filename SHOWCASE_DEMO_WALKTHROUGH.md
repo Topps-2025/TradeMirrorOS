@@ -1,242 +1,58 @@
-# Finance Journal 展示讲解路径
+# Showcase Demo Walkthrough
 
-适用版本：`_runtime_showcase_202602_202604_v3`
+The repository includes a showcase generator that creates a realistic-looking demo runtime for product walkthroughs.
 
-适用场景：项目演示、路演讲解、给合作方说明“从记账到自进化到体检报告”的完整闭环。
+## Goal
 
-## 1. 展示目标
+The showcase is meant to demonstrate:
 
-这套展示主要讲三件事：
+- plans
+- trades
+- reviews
+- health reports
+- morning briefs
+- self-evolution outputs
+- vault exports
 
-1. 这个框架不是单点记账工具，而是把“新闻 -> 计划 -> 交易 -> 回顾 -> 自进化 -> 体检”串成闭环。
-2. 这一批展示数据可以证明框架已经能跑通完整流程，且能每日持续产出晨报。
-3. 在时间有限的情况下，先用真实行情数据完成一批可展示轨迹，再逐步过渡到真实长期陪跑。
+without requiring a fully populated real account history.
 
-## 2. 数据边界说明
+## Important Boundary
 
-- 真实部分：日期、价格、涨跌幅、收益率、持仓窗口、关注池快照，来自真实行情数据。
-- 模拟部分：选股原因、买卖点解释、情绪备注、经验沉淀，为展示用途的模拟文案。
-- 新闻晨报：优先使用“只要给网址就能抓”的网址源模式，适配云服务器挂载后的抓取场景。
-- 公告：框架已保留 Tushare 公告接入口；当前演示 token 对 `anns_d` 权限不足，因此展示重点放在网址新闻晨报。
+The showcase uses a hybrid approach:
 
-一句话对外口径可以直接说：
+- market prices and event flows can be grounded in real data
+- reasons, reflections, and some behavioral text may still be synthetic demonstration content
 
-> 这一版展示强调“真实行情 + 模拟解释 + 可持续晨报”，先把闭环跑起来，再和真实使用者一起长出来。
+That makes it useful for demos, but it should not be confused with a full real-money journal.
 
-## 3. 本批展示的核心结果
+## Typical Flow
 
-- 展示区间：`20260203` 到 `20260410`
-- 晨报日期：`20260411`
-- 展示计划数：`13`
-- 已闭环交易数：`11`
-- 当前有效计划数：`2`
-- 卖后回顾数：`10`
-- 晨报原始事件数：`83`
-- 晨报去重后事件数：`74`
-- 晨报高优先级事件数：`2`
-- 晨报交叉验证事件数：`9`
-- 当前优先策略模式：`contextual_bandit`
+```powershell
+python .\inance-journal-orchestrator\scripts\generate_showcase_demo.py `
+  --root .\_runtime_showcase_202602_202604 `
+  --start-date 20260203 `
+  --end-date 20260410 `
+  --brief-date 20260411 `
+  --max-trades 14
+```
 
-## 4. 推荐的 5-8 分钟展示顺序
+## What It Produces
 
-### 第 1 步：先打开总览 Dashboard
+A successful demo build can generate:
 
-文件：
+- sample plans and trades
+- post-trade reviews
+- health reports
+- daily notes
+- self-evolution and style-portrait artifacts
+- vault-ready Markdown pages
 
-- `_runtime_showcase_202602_202604_v3/obsidian-vault/00-dashboard/trade_journal_dashboard.md`
+## Recommended Usage
 
-这一页讲什么：
+Use the showcase when you need:
 
-- 先让观众看到这不是一两条零散记录，而是一整批连续轨迹。
-- 重点点出最近交易、最近体检、以及展示区间的连续性。
-- 可以直接说：从 `2026-02-03` 到 `2026-04-10`，已经形成了完整的计划、交易、回顾和报告链路。
+- a product walkthrough
+- a demo dataset for UI or agent integration
+- an example runtime for testing export flows
 
-建议口播：
-
-> 先看总览页，这里不是只记一笔交易，而是把连续两个月多的计划、执行、回顾、体检都沉淀到了同一个工作流里。
-
-### 第 2 步：展示每日晨报，强调“云端只靠网址也能抓”
-
-文件：
-
-- `_runtime_showcase_202602_202604_v3/artifacts/daily/20260411/morning_brief.md`
-
-这一页讲什么：
-
-- 这是最适合每天展示的内容，因为它能持续更新。
-- 当前晨报把网址新闻抓取、去重、交叉验证、计划提醒、自进化提醒放在了一页里。
-- 这版演示里主要来源是 `jin10` 和 `cls`，已经能在云服务器环境下稳定跑通。
-
-建议重点指出的数据：
-
-- 原始事件 `83` 条，去重后 `74` 条
-- 高优先级 `2` 条
-- 交叉验证 `9` 条
-- 来源分布：`jin10(57)`、`cls(17)`
-- 晨报里已经直接挂上了“今日有效计划”和“自进化提醒”
-
-建议口播：
-
-> 这页最重要，因为它每天都能产出。现在不是必须依赖复杂站内接口，只要有网址，就能在云端抓新闻、去重、做来源交叉验证，再把结果和今天的计划、自进化提醒拼到一起。
-
-### 第 3 步：展示两个当前有效计划
-
-文件：
-
-- `_runtime_showcase_202602_202604_v3/obsidian-vault/01-plans/plan_20260411_603083.SH_剑桥科技_plan_20260411_173735_50a3fb0b.md`
-- `_runtime_showcase_202602_202604_v3/obsidian-vault/01-plans/plan_20260411_300308.SZ_中际旭创_plan_20260411_173735_aa215dc6.md`
-
-这一页讲什么：
-
-- 晨报不是资讯堆砌，而是能落到“今天可以看什么计划”。
-- 计划里已经结构化包含：逻辑标签、环境标签、买入区间、卖出区间、止损条件、纪律检查。
-- 对展示来说，最关键的是“信息 -> 计划”的衔接已经形成标准格式。
-
-建议口播：
-
-> 晨报出来以后，不是停留在看消息，而是直接衔接到待执行计划。计划页里已经有区间、止损、标签和纪律检查项，方便后面直接变成交易记录。
-
-### 第 4 步：展示一笔强样本交易
-
-文件：
-
-- `_runtime_showcase_202602_202604_v3/obsidian-vault/02-trades/trade_20260402_300308.SZ_中际旭创_trade_20260411_173731_793e98a9.md`
-
-这一页讲什么：
-
-- 这笔是本批展示里的代表性强样本。
-- 真实行情结果：`20260402` 买入 `582.0`，`20260410` 卖出 `734.65`，实际收益 `26.23%`。
-- 这里可以清楚讲出：价格和日期是真实的，解释文本是演示模拟的。
-- 这类记录是后面自进化报告的原始样本。
-
-建议口播：
-
-> 这里故意把情绪、失误、经验字段都保留着，因为后面的自进化和体检报告，吃的就是这些结构化轨迹。
-
-### 第 5 步：展示一笔风险样本，再接卖后回顾
-
-文件：
-
-- `_runtime_showcase_202602_202604_v3/obsidian-vault/02-trades/trade_20260312_000063.SZ_中兴通讯_trade_20260411_173718_207131aa.md`
-- `_runtime_showcase_202602_202604_v3/obsidian-vault/03-reviews/review_20260324_000063.SZ_review_20260411_173738_87aeed83.md`
-
-这一页讲什么：
-
-- 强样本只能说明能赚钱，风险样本才能说明系统能不能学会避错。
-- 中兴通讯这笔收益 `-3.48%`，但卖后回顾显示后续最大回撤 `-10.97%`，因此这次离场是“有效保护”。
-- 这里特别适合讲“不是只统计收益，而是把卖点处理对不对也纳入系统反馈”。
-
-建议口播：
-
-> 这套系统不是只会夸盈利单，它也会对亏损单和提前卖出的单做再回看。只要卖出后能证明避开了更大回撤，这个动作就会被保留下来，进入下一轮策略权重。
-
-### 第 6 步：展示自进化报告
-
-文件：
-
-- `_runtime_showcase_202602_202604_v3/artifacts/daily/20260410/evolution_report_20260110_20260410.md`
-
-这一页讲什么：
-
-- 当前闭环样本数 `11`
-- 可复用优质路径数 `1`
-- 正向可复用基因数 `11`
-- 风险基因数 `4`
-- 当前建议策略不是直接上重型强化学习，而是先用 `contextual_bandit` 做提醒排序和权重更新
-
-最值得直接念出来的一句：
-
-- 优质路径：`逻辑=低吸 | 形态=均线回踩 | 阶段=震荡市 | 环境=算力链 | 环境=修复回流 | 纪律=买点在计划内`
-
-建议口播：
-
-> 我们现在不急着假装自己有完整强化学习闭环，因为样本还不够大。现阶段更合理的是先用 bandit 思路，把哪些路径值得优先提醒、哪些风险该先压制做出来，等以后轨迹更细了再升级到 offline RL。
-
-### 第 7 步：展示风格画像
-
-文件：
-
-- `_runtime_showcase_202602_202604_v3/artifacts/daily/20260410/style_portrait_20260110_20260410.md`
-
-这一页讲什么：
-
-- 这一页是把自进化结果翻译成“人能听懂的话”。
-- 当前优势集中在低吸、均线回踩、算力链修复回流。
-- 买点计划内执行率约 `90.91%`
-- 卖点计划内执行率当前还是 `0.00%`
-
-建议口播：
-
-> 这页很适合展示“系统在认识使用者”。它不只是给结论，还能告诉你：你更容易在哪种结构赚钱，最大的纪律缺口又在哪里。
-
-### 第 8 步：最后落到体检报告
-
-文件：
-
-- `_runtime_showcase_202602_202604_v3/artifacts/daily/20260410/health_report_showcase_20260203_20260410.md`
-
-这一页讲什么：
-
-- 计划执行率：`100.00%`
-- 计划外交易占比：`0.00%`
-- 止损执行率：`18.18%`
-- 卖飞回顾触发数：`2`
-
-建议口播：
-
-> 如果说前面的页面更像交易日记，这页就是行为体检。它会把执行率、计划外交易、止损纪律这些行为指标量化出来，方便后面持续迭代。
-
-## 5. 如果只有 3 分钟，最小展示路径
-
-按这个顺序打开即可：
-
-1. `_runtime_showcase_202602_202604_v3/obsidian-vault/00-dashboard/trade_journal_dashboard.md`
-2. `_runtime_showcase_202602_202604_v3/artifacts/daily/20260411/morning_brief.md`
-3. `_runtime_showcase_202602_202604_v3/obsidian-vault/02-trades/trade_20260402_300308.SZ_中际旭创_trade_20260411_173731_793e98a9.md`
-4. `_runtime_showcase_202602_202604_v3/artifacts/daily/20260410/evolution_report_20260110_20260410.md`
-5. `_runtime_showcase_202602_202604_v3/artifacts/daily/20260410/health_report_showcase_20260203_20260410.md`
-
-这 5 页已经足够讲清楚：
-
-- 有持续输入：晨报
-- 有结构化计划：交易计划
-- 有真实行情轨迹：交易记录
-- 有学习能力：自进化
-- 有行为反馈：体检报告
-
-## 6. 展示时建议反复强调的三句话
-
-- 这不是单独的记账工具，而是完整闭环的交易陪跑框架。
-- 这一批先用真实行情打底，理由文案先模拟，是为了在有限时间内把展示链路跑通。
-- 晨报已经具备“有网址就能抓”的能力，所以它最适合做每天稳定展示的入口。
-
-## 7. 关于新闻与公告能力，建议怎么回答
-
-如果现场被问到“公告为什么没有放得更重”，可以直接这样回答：
-
-- 当前框架已经保留 Tushare 公告能力，但演示 token 对 `anns_d` 权限不足。
-- 因为项目部署在云服务器上，所以这一版优先把“网址即数据源”的能力做稳。
-- 也就是说，只要给出新闻网址，就能走统一的抓取、清洗、去重、晨报拼接流程。
-- 等 Tushare 公告权限补齐后，可以直接把公告继续并入同一份晨报，而不需要推翻现有结构。
-
-## 8. 技术答疑备用页
-
-如果对方想看“这东西是不是已经接好了”，可以备用打开这些文件：
-
-- `SKILL.md`
-- `finance-info-monitor/references/news-source-presets.md`
-- `trade-evolution-engine/references/evolution-algorithms.md`
-- `finance_journal_core/url_sources.py`
-
-对应说明：
-
-- `SKILL.md`：主文件夹 skill，方便 OpenClaw Control UI 识别并调度子能力
-- `news-source-presets.md`：新闻网址源预设说明
-- `evolution-algorithms.md`：自进化算法思路，当前重点是 bandit/自适应排序
-- `url_sources.py`：网址抓取适配层
-
-## 9. 最后一句收尾
-
-收尾建议直接说：
-
-> 这个项目最初就是按“框架和使用者一起成长”来设计的。现在这批展示版已经把新闻晨报、计划、记账、卖后回顾、自进化和体检打通了，后面补的不是方向，而是更多真实轨迹和更高频的日常使用。
+Do not present showcase text as a fully faithful historical ledger.

@@ -2,22 +2,22 @@
 
 ## Supported Versions
 
-当前默认只保证 `main` 分支上的最新提交持续修复安全问题。
+Security fixes are primarily applied to the latest commits on the `main` branch.
 
 ## Reporting a Vulnerability
 
-请不要通过公开 issue 报告安全漏洞。
+Please do not report security issues through public issues.
 
-推荐方式：
+Preferred options:
 
-1. 如果仓库已开启 GitHub Private Vulnerability Reporting，请直接使用仓库的 `Security` 页面提交
-2. 如果尚未开启，请先通过仓库维护者的 GitHub 联系方式私下沟通
+1. Use GitHub Private Vulnerability Reporting if it is enabled for the repository.
+2. Otherwise, contact the maintainers privately through the hosting platform.
 
-报告中建议包含：
+Please include, when possible:
 
-- 影响范围
-- 复现步骤
-- 可能的利用方式
-- 预期修复建议（如果有）
+- the affected area
+- reproduction steps
+- impact and possible abuse scenario
+- suggested fix or mitigation
 
-维护者会在确认问题后尽快给出处理计划，并在修复后再公开披露细节。
+We will review the report, confirm severity, and coordinate disclosure after a fix is available.

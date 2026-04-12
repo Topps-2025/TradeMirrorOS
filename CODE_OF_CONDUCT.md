@@ -1,25 +1,26 @@
 # Code of Conduct
 
-为了让这个仓库适合长期协作，请所有参与者遵守下面的基本约定。
+We want this repository to remain constructive, practical, and respectful for contributors from different backgrounds.
 
-## 我们鼓励的行为
+## Expected Behavior
 
-- 尊重不同背景、经验和表达方式
-- 给出具体、可执行、可复现的反馈
-- 聚焦代码、设计和事实，而不是针对个人
-- 在讨论中主动说明假设、边界和风险
+- Be respectful in language and tone.
+- Focus on ideas, code, data, and tradeoffs instead of personal attacks.
+- Provide reproducible examples when reporting bugs or disagreements.
+- Make assumptions and limits explicit when discussing design decisions.
+- Treat maintainers, contributors, and users as collaborators.
 
-## 不可接受的行为
+## Unacceptable Behavior
 
-- 人身攻击、羞辱、威胁或骚扰
-- 恶意引战、刷屏、钓鱼或持续性打断讨论
-- 发布他人的隐私信息
-- 明知会造成破坏却拒绝配合修复
+- Harassment, threats, or personal abuse
+- Doxxing or sharing private information without consent
+- Sustained disruption, trolling, or bad-faith participation
+- Knowingly misleading contributors about security, data integrity, or deployment risk
 
-## 维护者处理方式
+## Maintainer Actions
 
-维护者可以对违规内容进行编辑、隐藏、锁定、删除，或限制相关账号继续参与。
+Maintainers may edit, hide, lock, remove, or moderate content that violates these expectations.
 
-## 报告渠道
+## Reporting
 
-如果你遇到不当行为，请通过维护者提供的私下渠道反馈；如问题同时涉及安全风险，请优先参考 `SECURITY.md`。
+If you experience or witness unacceptable behavior, contact the maintainers through a private channel when possible. If the issue also involves security, follow `SECURITY.md`.

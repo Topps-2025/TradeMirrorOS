@@ -1,92 +1,37 @@
-﻿# 社区愿景：全民 Agent 记账与交易思想白皮书社区
+# Community Agent Ledger Vision
 
-## 一、愿景
+The long-term vision behind Finance Journal is larger than one local trading notebook.
 
-未来这套系统不应该只是一位用户的本地账本。
+## Core Idea
 
-更大的愿景是：
+A single-user journal is useful. A network of structured, privacy-aware journals can become a much stronger knowledge layer.
 
-构建一个“全民 Agent 记账”的交易知识社区。
+The future community direction may include:
 
-每个人都可以拥有自己的交易 Agent，持续记录：
-- 计划
-- 执行
-- 情绪
-- 失误
-- 回顾
-- 经验
+- anonymized pattern cards extracted from many users' reviews
+- shared "what worked / what failed" conditions without exposing private account data
+- agent-readable principles derived from many small journal fragments
+- provenance and moderation layers for shared community knowledge
 
-这些资产在经过匿名化、结构化、归因化之后，可以进一步沉淀成一套可复用的公共知识体系。
+## Important Boundary
 
-## 二、为什么这件事有价值
+This is not a plan to create a copy-trading system or a hype-driven stock-picking feed.
 
-今天很多交易经验都消失在：
-- 聊天记录里
-- 临时截图里
-- 盘后的情绪输出里
-- 个人脑海里的模糊印象里
+The useful community layer should focus on:
 
-真正可以复用、可检验、可演化的经验资产非常少。
+- reflection patterns
+- discipline lessons
+- error archetypes
+- context-dependent tradeoff awareness
 
-如果每个人都用 Agent 记账，那么多年以后沉淀下来的不只是“某人赚没赚钱”，而是：
-- 在什么市场环境下，什么行为容易成功
-- 哪些纪律偏差最常导致亏损
-- 哪些交易思想经过足够多样本后仍然有效
-- 哪些风格在不同阶段适用，哪些只在特定市场有效
+## Why It Matters
 
-## 三、想象中的社区形态
+Most trading knowledge is either too vague to reuse or too overfit to trust.
+A structured ledger approach can preserve more nuance:
 
-### 1. Agent 账本层
+- what the trader saw
+- what they believed
+- what they ignored
+- what the outcome later taught them
 
-每个用户有自己的本地 Agent：
-- 先服务自己
-- 先做个人风格沉淀
-- 保证数据主权在个人手里
-
-### 2. 匿名经验资产层
-
-在用户授权的前提下，将经验蒸馏成匿名化资产：
-- 经验卡片
-- 错误模式卡片
-- 行为纪律卡片
-- 风格画像样本
-- 条件组合统计
-
-### 3. 白皮书层
-
-这些匿名资产进一步沉淀为公共白皮书：
-- 短线纪律白皮书
-- 龙头交易白皮书
-- 情绪周期白皮书
-- 止损执行白皮书
-- 持仓与卖点行为白皮书
-
-它不一定是“谁最厉害”，而是“哪些思想经过长期样本验证值得大众参考”。
-
-## 四、理想状态下的意义
-
-如果做得足够久，这个社区可以像价值投资之于巴菲特那样，逐步形成：
-- 一批清晰、可复用、可审计的交易思想
-- 一批被历史不断修正的纪律原则
-- 一套不断演化的公共知识资产
-- 一批真正能被全民参考、持续更新的交易思想白皮书
-
-不是神话式的“股神语录”，而是：
-- 有样本
-- 有上下文
-- 有适用边界
-- 有失败案例
-- 有持续修正
-
-## 五、这件事的核心前提
-
-要想做到社区层，前提不是先做社区产品，而是先把个体账本做扎实：
-- 记账方便
-- 数据真实
-- 标签稳定
-- 回顾有质量
-- 知识能沉淀
-
-所以当前这套系统仍然先聚焦个人账本。
-
-社区，是下一阶段的愿景，而不是现在就草率展开的功能。
+That kind of record is more valuable than another simplified "signal" stream.
