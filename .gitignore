@@ -16,3 +16,9 @@ _runtime*/
 *.db-shm
 *.db-wal
 *.log
+
+# Private broker statement exports; force-add them only on the private-sync branch.
+*交割单*.xls
+*交割单*.xlsx
+*成交查询*.xls
+*成交查询*.xlsx

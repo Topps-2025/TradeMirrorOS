@@ -1,5 +1,7 @@
 # Finance Journal
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Finance Journal is a conversation-first trading journal and reflection framework for discretionary and semi-systematic traders.
 
 It is designed for workflows such as:
@@ -100,9 +102,33 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade impor
 This flow is built for a "facts first, reasons later" workflow:
 
 - align symbol, dates, prices, quantity, amount, and fees from standardized CSV or JSON rows
+- support broker-exported `.xls` text files such as GBK + tab-delimited exports from Chinese broker software
 - match an existing trade when possible
 - close an existing open trade when the statement row supplies the sell facts
-- return `assistant_message`, `pending_question`, and `follow_up_queue` so the conversation can continue with thesis, trigger, position sizing, emotion, and discipline details
+- return `assistant_message`, `pending_question`, `follow_up_queue`, and `completeness_backlog` so the conversation can continue with thesis, trigger, position sizing, emotion, and discipline details
+
+### 4b. Scan incomplete trades before running parallel follow-up polling
+
+```powershell
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade incomplete `
+  --status open `
+  --limit 200
+
+python .\finance-journal-orchestrator\scripts\generate_gateway_followups.py `
+  --root .\_runtime `
+  --status open `
+  --format markdown `
+  --max-groups 12 `
+  --max-singles 12 `
+  --output .\_runtime\artifacts\daily\20260413\gateway_followups.md
+```
+
+The backlog output highlights:
+
+- which trades are still missing blocking fields such as `thesis`
+- which subjective context fields are still missing, such as `user_focus`, `observed_signals`, `position_reason`, and `environment_tags`
+- which trades are related by same-day context or same-symbol thesis and can be polled in parallel on the gateway side
+- a readiness snapshot for self-evolution inputs
 
 ### 5. Create a plan, log a trade, and export notes
 
@@ -147,6 +173,8 @@ This helps reduce repetitive polling, especially for:
 - same-day market context
 - repeated intraday trades on the same symbol
 - semi-systematic strategy lines where factor choice and activation logic are shared across several entries
+
+The same grouping logic is now also exposed through `trade incomplete` and `import-statement -> completeness_backlog`, so a gateway can batch-poll related trades instead of asking one row at a time.
 
 ## Decision Context and Semi-Quant Workflows
 
@@ -213,7 +241,6 @@ python -m unittest discover -s tests -v
 - framework purpose and vision: `FRAMEWORK_PURPOSE_AND_VISION.md`
 - community vision: `COMMUNITY_AGENT_LEDGER_VISION.md`
 - git sync guidance: `GIT_SYNC_WORKFLOW.md`
-- showcase demo notes: `SHOWCASE_DEMO_WALKTHROUGH.md`
 
 ## Notes
 

@@ -11,6 +11,7 @@ import pandas as pd
 
 from finance_journal_core.app import FinanceJournalApp
 from finance_journal_core.gateway import dispatch
+from finance_journal_core.storage import json_loads
 from finance_journal_core.url_sources import UrlEventFetcher, _load_json_loose
 
 
@@ -1136,6 +1137,8 @@ class FinanceJournalSmokeTest(unittest.TestCase):
         self.assertEqual(trade["sell_date"], "20260415")
         self.assertEqual(trade["buy_price"], 43.2)
         self.assertEqual(trade["sell_price"], 46.8)
+        statement_context = json_loads(trade["statement_context_json"], {})
+        self.assertEqual(statement_context["buy_leg"]["quantity"], 1000.0)
         self.assertIn("thesis", item["follow_up"]["missing_fields"])
         self.assertTrue(item["follow_up"]["polling_bundle"]["next_question"])
         self.assertEqual(result["route"], "statement_import")
@@ -1158,6 +1161,113 @@ class FinanceJournalSmokeTest(unittest.TestCase):
         refreshed_trade = self.app.get_trade(item["trade_id"])
         self.assertIsNotNone(refreshed_trade)
         self.assertIn("CPO", refreshed_trade["thesis"])
+
+    def test_statement_import_supports_broker_xls_text_export_and_builds_backlog(self) -> None:
+        self.app.add_watchlist("002837", name="英维克")
+        self.app.add_watchlist("002131", name="利欧股份")
+        statement_path = self.runtime_root / "broker_export.xls"
+        statement_path.write_bytes(
+            (
+                '="成交日期"\t="成交时间"\t="证券代码"\t="证券名称"\t="委托类别"\t="成交价格"\t="成交数量"\t="成交编号"\n'
+                '="20260202"\t="14:34:36"\t="002837"\t="英维克"\t="卖出"\t104.560\t100\t="0103000075547751"\n'
+                '="20260202"\t="14:37:44"\t="002131"\t="利欧股份"\t="买入"\t9.720\t1100\t="0101000080796213"\n'
+            ).encode("gbk")
+        )
+
+        existing = self.app.log_trade(
+            ts_code="002837",
+            name="英维克",
+            buy_date="20260130",
+            buy_price=101.2,
+            thesis="前排修复预期",
+        )
+
+        result = self.app.import_statement_file(str(statement_path), trade_date="20260202")
+        self.assertEqual(result["summary"]["imported_new"], 1)
+        self.assertEqual(result["summary"]["closed_existing"], 1)
+        backlog = result["completeness_backlog"]
+        self.assertEqual(backlog["summary"]["incomplete_trades"], 2)
+        imported_trade = next(item for item in result["items"] if item["status"] == "imported_new")
+        self.assertEqual(imported_trade["normalized_row"]["ts_code"], "002131.SZ")
+        self.assertEqual(imported_trade["normalized_row"]["buy_date"], "20260202")
+        closed_trade = self.app.get_trade(existing["trade_id"])
+        self.assertEqual(closed_trade["sell_date"], "20260202")
+        self.assertEqual(closed_trade["sell_price"], 104.56)
+        closed_context = json_loads(closed_trade["statement_context_json"], {})
+        self.assertEqual(closed_context["sell_leg"]["statement_id"], "0103000075547751")
+
+    def test_trade_incomplete_backlog_groups_related_trades(self) -> None:
+        trade_one = self.app.log_trade(
+            ts_code="603083",
+            name="剑桥科技",
+            buy_date="20260410",
+            buy_price=43.2,
+            thesis="",
+        )
+        trade_two = self.app.log_trade(
+            ts_code="603083",
+            name="剑桥科技",
+            buy_date="20260410",
+            buy_price=44.1,
+            thesis="",
+        )
+
+        backlog = self.app.build_trade_follow_up_backlog(status="open")
+        self.assertEqual(backlog["summary"]["incomplete_trades"], 2)
+        self.assertTrue(any(item["trade_id"] == trade_one["trade_id"] for item in backlog["items"]))
+        self.assertTrue(any(item["trade_id"] == trade_two["trade_id"] for item in backlog["items"]))
+        self.assertTrue(any(group["scope"] == "trade_date" for group in backlog["parallel_groups"]))
+        self.assertTrue(any(group["scope"] == "symbol" for group in backlog["parallel_groups"]))
+
+    def test_gateway_follow_up_batches_can_render_grouped_prompts(self) -> None:
+        trade_one = self.app.log_trade(
+            ts_code="603083",
+            name="剑桥科技",
+            buy_date="20260410",
+            buy_price=43.2,
+            thesis="",
+        )
+        trade_two = self.app.log_trade(
+            ts_code="603083",
+            name="剑桥科技",
+            buy_date="20260410",
+            buy_price=44.1,
+            thesis="",
+        )
+
+        payload = self.app.build_gateway_follow_up_batches(status="open", max_group_batches=4, max_single_batches=4)
+        self.assertGreaterEqual(payload["summary"]["group_batches"], 1)
+        trade_date_batch = next(item for item in payload["batches"] if item["scope"] == "trade_date")
+        self.assertIn(trade_one["trade_id"], trade_date_batch["trade_ids"])
+        self.assertIn(trade_two["trade_id"], trade_date_batch["trade_ids"])
+        self.assertIn("共享", trade_date_batch["answer_template"])
+        self.assertIn("同日交易", trade_date_batch["prompt"])
+
+    def test_statement_import_can_match_close_only_by_unique_quantity(self) -> None:
+        self.app.add_watchlist("603083", name="剑桥科技")
+        statement_path = self.runtime_root / "close_match_by_qty.xls"
+        statement_path.write_bytes(
+            (
+                '="成交日期"\t="成交时间"\t="证券代码"\t="证券名称"\t="委托类别"\t="成交价格"\t="成交数量"\t="股东账户"\t="成交编号"\n'
+                '="20260410"\t="09:31:00"\t="603083"\t="剑桥科技"\t="买入"\t43.20\t100\t="A1"\t="B1"\n'
+                '="20260410"\t="09:45:00"\t="603083"\t="剑桥科技"\t="买入"\t43.50\t300\t="A1"\t="B2"\n'
+                '="20260411"\t="10:12:00"\t="603083"\t="剑桥科技"\t="卖出"\t44.80\t300\t="A1"\t="S1"\n'
+            ).encode("gbk")
+        )
+
+        result = self.app.import_statement_file(str(statement_path), trade_date="20260411")
+        self.assertEqual(result["summary"]["imported_new"], 2)
+        self.assertEqual(result["summary"]["closed_existing"], 1)
+        self.assertEqual(result["summary"]["needs_manual_match"], 0)
+
+        open_trades = self.app.list_trades(status="open", limit=10)
+        closed_trades = self.app.list_trades(status="closed", limit=10)
+        self.assertEqual(len(open_trades), 1)
+        self.assertEqual(open_trades[0]["buy_price"], 43.2)
+        matched_trade = next(item for item in closed_trades if item["sell_date"] == "20260411")
+        statement_context = json_loads(matched_trade["statement_context_json"], {})
+        self.assertEqual(statement_context["buy_leg"]["quantity"], 300.0)
+        self.assertEqual(statement_context["sell_leg"]["statement_id"], "S1")
 
     def test_gateway_can_import_statement_and_open_follow_up_session(self) -> None:
         self.app.add_watchlist("603083", name="剑桥科技")

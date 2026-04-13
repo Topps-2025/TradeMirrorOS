@@ -20,6 +20,7 @@ from .analytics import (
 )
 from .config import load_runtime_config
 from .intake import (
+    build_completeness_report,
     build_polling_bundle,
     build_reflection_prompts,
     build_standardized_record,
@@ -56,6 +57,17 @@ def _coalesce_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _statement_text_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.startswith('="') and text.endswith('"'):
+        text = text[2:-1]
+    elif text.startswith("'") and len(text) > 1:
+        text = text[1:]
+    return text.strip()
 
 
 class FinanceJournalApp:
@@ -2667,6 +2679,7 @@ class FinanceJournalApp:
         mistake_tags: list[str] | str | None = None,
         lessons_learned: str | None = None,
         decision_context: dict[str, Any] | None = None,
+        statement_context: dict[str, Any] | None = None,
         notes: str | None = None,
         fetch_snapshot: bool = False,
         sector_name: str | None = None,
@@ -2696,10 +2709,10 @@ class FinanceJournalApp:
                     position_size_pct, logic_type_tags_json, pattern_tags_json, theme,
                     market_stage_tag, environment_tags_json, snapshot_id, benchmark_return_pct,
                     actual_return_pct, timing_alpha_pct, holding_days, plan_execution_deviation_json,
-                    decision_context_json,
+                    decision_context_json, statement_context_json,
                     review_status, status, emotion_notes, mistake_tags_json, lessons_learned, notes, created_at, updated_at
                 ) VALUES(
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -2730,6 +2743,7 @@ class FinanceJournalApp:
                     holding_days,
                     json_dumps(deviation),
                     json_dumps(decision_context or {}),
+                    json_dumps(statement_context or {}),
                     "pending",
                     "closed" if normalized_sell_date else "open",
                     emotion_notes or "",
@@ -2767,6 +2781,7 @@ class FinanceJournalApp:
         emotion_notes: str | None = None,
         mistake_tags: list[str] | str | None = None,
         lessons_learned: str | None = None,
+        statement_context: dict[str, Any] | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
         trade = self.get_trade(trade_id)
@@ -2786,12 +2801,17 @@ class FinanceJournalApp:
         existing_mistakes = split_tags(json.loads(trade.get("mistake_tags_json") or "[]"))
         merged_mistake_tags = existing_mistakes + [tag for tag in split_tags(mistake_tags) if tag not in existing_mistakes]
         merged_lessons = "\n".join(part for part in [trade.get("lessons_learned") or "", lessons_learned or ""] if part).strip()
+        merged_statement_context = self._merge_statement_context(
+            json_loads(trade.get("statement_context_json"), {}) or {},
+            statement_context,
+        )
         self.db.execute(
             """
             UPDATE trades
             SET sell_date = ?, sell_price = ?, sell_reason = ?, sell_position = ?, benchmark_return_pct = ?,
                 actual_return_pct = ?, timing_alpha_pct = ?, holding_days = ?, plan_execution_deviation_json = ?,
-                status = 'closed', updated_at = ?, emotion_notes = ?, mistake_tags_json = ?, lessons_learned = ?, notes = ?
+                status = 'closed', updated_at = ?, emotion_notes = ?, mistake_tags_json = ?, lessons_learned = ?, notes = ?,
+                statement_context_json = ?
             WHERE trade_id = ?
             """,
             (
@@ -2809,6 +2829,7 @@ class FinanceJournalApp:
                 json_dumps(merged_mistake_tags),
                 merged_lessons,
                 merged_notes,
+                json_dumps(merged_statement_context),
                 trade_id,
             ),
         )
@@ -2954,24 +2975,150 @@ class FinanceJournalApp:
             sql += f" LIMIT {int(limit)}"
         return self.db.fetchall(sql, tuple(params))
 
+    def _load_delimited_statement_rows(
+        self,
+        path: Path,
+        *,
+        encoding_candidates: list[str],
+        delimiter: str,
+    ) -> list[dict[str, Any]]:
+        last_error: Exception | None = None
+        for encoding in encoding_candidates:
+            try:
+                with path.open("r", encoding=encoding, newline="") as handle:
+                    reader = csv.DictReader(handle, delimiter=delimiter)
+                    rows = [
+                        { _statement_text_value(key): value for key, value in dict(row or {}).items() if _statement_text_value(key) }
+                        for row in reader
+                        if any(str(value or "").strip() for value in (row or {}).values())
+                    ]
+                if rows:
+                    return rows
+            except UnicodeDecodeError as exc:
+                last_error = exc
+            except csv.Error as exc:
+                last_error = exc
+        if last_error:
+            raise last_error
+        return []
+
+    def _load_excel_statement_rows(self, path: Path) -> list[dict[str, Any]]:
+        import pandas as pd
+
+        excel_book = pd.ExcelFile(path)
+        rows: list[dict[str, Any]] = []
+        for sheet_name in excel_book.sheet_names:
+            frame = pd.read_excel(path, sheet_name=sheet_name).fillna("")
+            rows.extend(
+                {_statement_text_value(key): value for key, value in item.items() if _statement_text_value(key)}
+                for item in frame.to_dict(orient="records")
+            )
+        return rows
+
+    def _load_statement_rows(self, path: Path) -> list[dict[str, Any]]:
+        suffix = path.suffix.lower()
+        if suffix == ".json":
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                rows = payload.get("rows") or payload.get("items") or []
+            else:
+                rows = payload
+            if not isinstance(rows, list):
+                raise ValueError("statement payload must be a list of row objects")
+            return [
+                {_statement_text_value(key): value for key, value in dict(row or {}).items() if _statement_text_value(key)}
+                for row in rows
+            ]
+        if suffix in {".csv"}:
+            return self._load_delimited_statement_rows(path, encoding_candidates=["utf-8-sig", "utf-8", "gbk"], delimiter=",")
+        if suffix in {".tsv"}:
+            return self._load_delimited_statement_rows(path, encoding_candidates=["utf-8-sig", "utf-8", "gbk"], delimiter="\t")
+        if suffix in {".xls", ".xlsx"}:
+            text_rows = self._load_delimited_statement_rows(path, encoding_candidates=["utf-8-sig", "utf-8", "gbk"], delimiter="\t")
+            if text_rows:
+                return text_rows
+            return self._load_excel_statement_rows(path)
+        raise ValueError(f"unsupported statement file type: {suffix or path.name}")
+
     def _statement_row_value(self, row: dict[str, Any], *keys: str) -> str:
         for key in keys:
             if key in row and row.get(key) not in (None, ""):
-                return str(row.get(key) or "").strip()
+                return _statement_text_value(row.get(key))
         return ""
 
     def _statement_row_float(self, row: dict[str, Any], *keys: str) -> float | None:
         raw = self._statement_row_value(row, *keys)
         if not raw:
             return None
-        cleaned = raw.replace(",", "")
+        cleaned = raw.replace(",", "").replace(" ", "")
         try:
             return float(cleaned)
         except ValueError:
             return None
 
+    def _statement_context_from_row(self, normalized: dict[str, Any], row: dict[str, Any], *, source_file: str = "") -> dict[str, Any]:
+        leg_payload = {
+            "trade_date": normalized.get("buy_date") or normalized.get("sell_date") or "",
+            "trade_time": self._statement_row_value(row, "trade_time", "成交时间", "time"),
+            "quantity": normalized.get("quantity"),
+            "amount": normalized.get("amount"),
+            "fee": normalized.get("fee"),
+            "occurred_amount": self._statement_row_float(row, "发生金额", "net_amount", "actual_amount"),
+            "commission": self._statement_row_float(row, "佣金", "commission"),
+            "stamp_duty": self._statement_row_float(row, "印花税", "stamp_duty"),
+            "transfer_fee": self._statement_row_float(row, "过户费", "transfer_fee"),
+            "other_fee": self._statement_row_float(row, "其他费", "other_fee"),
+            "shareholder_account": self._statement_row_value(row, "股东账户", "证券账户", "account"),
+            "statement_id": self._statement_row_value(row, "成交编号", "委托编号", "statement_id"),
+            "side": self._statement_row_value(row, "side", "direction", "买卖标志", "成交方向", "委托类别", "操作"),
+        }
+        leg_payload = {key: value for key, value in leg_payload.items() if value not in (None, "", [])}
+        payload = {
+            "source_file": source_file,
+            "last_imported_at": now_ts(),
+            "last_normalized_side": normalized.get("journal_kind") or "",
+        }
+        if normalized.get("journal_kind") == "close_only":
+            payload["sell_leg"] = leg_payload
+        elif normalized.get("journal_kind") == "closed_trade":
+            payload["buy_leg"] = dict(leg_payload)
+            payload["sell_leg"] = dict(leg_payload)
+        else:
+            payload["buy_leg"] = leg_payload
+        return payload
+
+    def _merge_statement_context(
+        self,
+        existing: dict[str, Any] | None,
+        incoming: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        merged = dict(existing or {})
+        for key, value in dict(incoming or {}).items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                nested = dict(merged.get(key) or {})
+                nested.update({inner_key: inner_value for inner_key, inner_value in value.items() if inner_value not in (None, "", [])})
+                merged[key] = nested
+            elif value not in (None, "", []):
+                merged[key] = value
+        return merged
+
+    def _update_trade_statement_context(self, trade_id: str, statement_context: dict[str, Any], notes: str = "") -> dict[str, Any]:
+        trade = self.get_trade(trade_id)
+        if not trade:
+            raise ValueError(f"trade not found: {trade_id}")
+        merged_context = self._merge_statement_context(
+            json_loads(trade.get("statement_context_json"), {}) or {},
+            statement_context,
+        )
+        merged_notes = "\n".join(part for part in [trade.get("notes") or "", notes] if part).strip()
+        self.db.execute(
+            "UPDATE trades SET statement_context_json = ?, notes = ?, updated_at = ? WHERE trade_id = ?",
+            (json_dumps(merged_context), merged_notes, now_ts(), trade_id),
+        )
+        return self.get_trade(trade_id) or {}
+
     def _normalize_statement_row(self, row: dict[str, Any], default_trade_date: str | None = None) -> dict[str, Any]:
-        side = self._statement_row_value(row, "side", "direction", "买卖标志", "成交方向").lower()
+        side = self._statement_row_value(row, "side", "direction", "买卖标志", "成交方向", "委托类别", "操作").lower()
         generic_date = self._statement_row_value(row, "trade_date", "成交日期", "date", "成交时间")
         generic_price = self._statement_row_float(row, "trade_price", "成交价格", "成交均价", "price", "均价", "成交价")
         buy_date = self._statement_row_value(row, "buy_date", "买入日期", "开仓日期", "买入成交日期")
@@ -3061,11 +3208,51 @@ class FinanceJournalApp:
             matches.append(trade)
         return matches
 
+    def _trade_statement_leg(self, trade: dict[str, Any], leg_key: str = "buy_leg") -> dict[str, Any]:
+        context = json_loads(trade.get("statement_context_json"), {}) or {}
+        return dict(context.get(leg_key) or {})
+
+    def _trade_statement_quantity(self, trade: dict[str, Any], leg_key: str = "buy_leg") -> float | None:
+        context = json_loads(trade.get("statement_context_json"), {}) or {}
+        return _coalesce_float((context.get(leg_key) or {}).get("quantity"))
+
+    def _trade_statement_account(self, trade: dict[str, Any], leg_key: str = "buy_leg") -> str:
+        context = json_loads(trade.get("statement_context_json"), {}) or {}
+        return str((context.get(leg_key) or {}).get("shareholder_account") or "").strip()
+
+    def _resolve_statement_close_candidate(self, normalized: dict[str, Any], candidates: list[dict[str, Any]], statement_context: dict[str, Any]) -> dict[str, Any] | None:
+        sell_date = str(normalized.get("sell_date") or "")
+        sell_quantity = _coalesce_float(normalized.get("quantity"))
+        sell_account = str((statement_context.get("sell_leg") or {}).get("shareholder_account") or "").strip()
+        filtered = [
+            item
+            for item in candidates
+            if not sell_date or not item.get("buy_date") or str(item.get("buy_date")) <= sell_date
+        ]
+        if len(filtered) == 1:
+            return filtered[0]
+        if sell_quantity is None:
+            return None
+
+        quantity_matches = []
+        for item in filtered:
+            candidate_qty = self._trade_statement_quantity(item)
+            if candidate_qty is None or abs(candidate_qty - sell_quantity) > 1e-6:
+                continue
+            candidate_account = self._trade_statement_account(item)
+            if sell_account and candidate_account and candidate_account != sell_account:
+                continue
+            quantity_matches.append(item)
+        if len(quantity_matches) == 1:
+            return quantity_matches[0]
+        return None
+
     def _statement_follow_up_payload(self, trade_row: dict[str, Any]) -> dict[str, Any]:
         fields = self._trade_to_journal_fields(trade_row)
         journal_kind = "closed_trade" if trade_row.get("sell_date") else "open_trade"
         evaluation = evaluate_journal_fields(fields, journal_kind)
         reflection_prompts = build_reflection_prompts(fields, journal_kind, evaluation["missing_fields"])
+        completeness = build_completeness_report(fields, journal_kind, missing_fields=evaluation["missing_fields"])
         return {
             "trade_id": trade_row.get("trade_id") or "",
             "journal_kind": journal_kind,
@@ -3073,6 +3260,7 @@ class FinanceJournalApp:
             "missing_fields": evaluation["missing_fields"],
             "follow_up_questions": evaluation["follow_up_questions"],
             "reflection_prompts": reflection_prompts,
+            "completeness": completeness,
             "polling_bundle": build_polling_bundle(
                 fields,
                 journal_kind,
@@ -3093,6 +3281,312 @@ class FinanceJournalApp:
             ),
         }
 
+    def _build_parallel_follow_up_groups(self, backlog_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        groups: list[dict[str, Any]] = []
+
+        def add_group(scope: str, group_key: str, label: str, question: str, fields: list[str], items: list[dict[str, Any]]) -> None:
+            unique_fields = [field for field in fields if field]
+            if len(items) < 2 or not unique_fields:
+                return
+            trade_ids = [str(item.get("trade_id") or "") for item in items if item.get("trade_id")]
+            if len(trade_ids) < 2:
+                return
+            groups.append(
+                {
+                    "scope": scope,
+                    "group_key": group_key,
+                    "label": label,
+                    "question": question,
+                    "fields": unique_fields,
+                    "trade_ids": trade_ids,
+                    "trade_count": len(trade_ids),
+                }
+            )
+
+        grouped_by_date: dict[str, list[dict[str, Any]]] = {}
+        grouped_by_symbol: dict[str, list[dict[str, Any]]] = {}
+        for item in backlog_items:
+            trade_date = str(item.get("trade_date") or "")
+            ts_code = str(item.get("ts_code") or "")
+            if trade_date:
+                grouped_by_date.setdefault(trade_date, []).append(item)
+            if ts_code:
+                grouped_by_symbol.setdefault(ts_code, []).append(item)
+
+        for trade_date, items in grouped_by_date.items():
+            fields = [
+                name
+                for name in ("user_focus", "environment_tags", "observed_signals")
+                if any(name in (entry.get("missing_context_fields") or []) for entry in items)
+            ]
+            add_group(
+                "trade_date",
+                trade_date,
+                "同日环境并行补问",
+                "如果这几笔是同一天的交易，可一次补市场环境、关注对象和触发信号，再按单笔交易回填。",
+                fields,
+                items,
+            )
+
+        for ts_code, items in grouped_by_symbol.items():
+            fields = [
+                name
+                for name in ("thesis", "user_focus", "observed_signals", "position_reason")
+                if any(name in (entry.get("missing_context_fields") or []) for entry in items)
+            ]
+            add_group(
+                "symbol",
+                ts_code,
+                "同票主线并行补问",
+                "如果这些成交只是同一只票反复做 T 或沿同一主线交易，可一次补选股理由、触发信号和仓位理由。",
+                fields,
+                items,
+            )
+        return groups[:12]
+
+    def build_trade_follow_up_backlog(
+        self,
+        *,
+        trade_ids: list[str] | None = None,
+        status: str | None = None,
+        limit: int = 200,
+        trade_date: str | None = None,
+        ts_code: str | None = None,
+        include_complete: bool = False,
+    ) -> dict[str, Any]:
+        if trade_ids:
+            placeholders = ",".join("?" for _ in trade_ids)
+            rows = self.db.fetchall(
+                f"SELECT * FROM trades WHERE trade_id IN ({placeholders}) ORDER BY buy_date DESC, updated_at DESC",
+                tuple(trade_ids),
+            )
+        else:
+            sql = "SELECT * FROM trades WHERE 1 = 1"
+            params: list[Any] = []
+            if status:
+                sql += " AND status = ?"
+                params.append(status)
+            if trade_date:
+                token = normalize_trade_date(trade_date)
+                sql += " AND (buy_date = ? OR sell_date = ?)"
+                params.extend([token, token])
+            if ts_code:
+                sql += " AND ts_code = ?"
+                params.append(normalize_ts_code(ts_code))
+            sql += " ORDER BY buy_date DESC, updated_at DESC"
+            if limit > 0:
+                sql += f" LIMIT {int(limit)}"
+            rows = self.db.fetchall(sql, tuple(params))
+
+        backlog_items: list[dict[str, Any]] = []
+        incomplete_count = 0
+        complete_count = 0
+        for trade in rows:
+            follow_up = self._statement_follow_up_payload(trade)
+            completeness = follow_up.get("completeness") or {}
+            is_incomplete = bool(completeness.get("needs_follow_up"))
+            if is_incomplete:
+                incomplete_count += 1
+            else:
+                complete_count += 1
+                if not include_complete:
+                    continue
+            missing_context_fields = list(
+                dict.fromkeys((completeness.get("core_missing_fields") or []) + (completeness.get("review_missing_fields") or []))
+            )
+            backlog_items.append(
+                {
+                    "trade_id": trade.get("trade_id") or "",
+                    "status": trade.get("status") or "",
+                    "ts_code": trade.get("ts_code") or "",
+                    "name": trade.get("name") or "",
+                    "trade_date": trade.get("buy_date") or trade.get("sell_date") or "",
+                    "buy_date": trade.get("buy_date") or "",
+                    "sell_date": trade.get("sell_date") or "",
+                    "journal_kind": follow_up.get("journal_kind") or "",
+                    "missing_required_fields": completeness.get("required_missing_fields") or [],
+                    "missing_context_fields": missing_context_fields,
+                    "blocking_missing_fields": completeness.get("blocking_missing_fields") or [],
+                    "completion_score": completeness.get("completion_score"),
+                    "ready_for_evolution": bool(completeness.get("ready_for_evolution")),
+                    "next_question": ((follow_up.get("polling_bundle") or {}).get("next_question") or ""),
+                    "assistant_message": follow_up.get("assistant_message") or "",
+                    "shared_context_hints": ((follow_up.get("polling_bundle") or {}).get("shared_context_hints") or []),
+                    "parallel_question_groups": ((follow_up.get("polling_bundle") or {}).get("parallel_question_groups") or []),
+                }
+            )
+
+        summary = {
+            "total_scanned": len(rows),
+            "incomplete_trades": incomplete_count,
+            "complete_trades": complete_count,
+            "reported_items": len(backlog_items),
+            "ready_for_evolution": sum(1 for item in backlog_items if item.get("ready_for_evolution")),
+            "blocking_missing_total": sum(len(item.get("blocking_missing_fields") or []) for item in backlog_items if item.get("blocking_missing_fields")),
+            "context_missing_total": sum(len(item.get("missing_context_fields") or []) for item in backlog_items if item.get("missing_context_fields")),
+        }
+        return {
+            "summary": summary,
+            "items": backlog_items,
+            "parallel_groups": self._build_parallel_follow_up_groups(backlog_items),
+        }
+
+    def _follow_up_trade_label(self, item: dict[str, Any]) -> str:
+        return (
+            f"{item.get('trade_id') or '-'} | "
+            f"{item.get('ts_code') or '-'} {item.get('name') or ''} | "
+            f"buy={item.get('buy_date') or '-'} | sell={item.get('sell_date') or '-'}"
+        ).strip()
+
+    def _build_group_follow_up_batch(
+        self,
+        group: dict[str, Any],
+        item_map: dict[str, dict[str, Any]],
+        *,
+        max_group_trades: int,
+    ) -> dict[str, Any] | None:
+        selected_items = [
+            item_map[trade_id]
+            for trade_id in list(group.get("trade_ids") or [])[:max_group_trades]
+            if trade_id in item_map
+        ]
+        if len(selected_items) < 2:
+            return None
+
+        scope = str(group.get("scope") or "")
+        fields = list(group.get("fields") or [])
+        if scope == "trade_date":
+            title = f"{group.get('label')}: {group.get('group_key')}"
+            prompt = "\n".join(
+                [
+                    f"请一次补完 {len(selected_items)} 笔同日交易的共享市场环境。",
+                    "相关交易：",
+                    *[f"- {self._follow_up_trade_label(item)}" for item in selected_items],
+                    "优先回答：",
+                    "1. 当天整体市场环境或阶段（environment_tags）",
+                    "2. 当时主要盯着哪些对象（user_focus）",
+                    "3. 共同触发信号（observed_signals）",
+                    "4. 如果某一笔有特殊差异，再按 trade_id 单独补一句 thesis 或 position_reason",
+                ]
+            )
+            answer_template = (
+                "共享：environment_tags=...；user_focus=...；observed_signals=...\n"
+                "逐笔：\n"
+                + "\n".join(
+                    f"- {item.get('trade_id')}: thesis=...；position_reason=...；difference=..."
+                    for item in selected_items
+                )
+            )
+        else:
+            title = f"{group.get('label')}: {group.get('group_key')}"
+            prompt = "\n".join(
+                [
+                    f"请一次补完 {len(selected_items)} 笔同票/同主线交易的共享原因。",
+                    "相关交易：",
+                    *[f"- {self._follow_up_trade_label(item)}" for item in selected_items],
+                    "优先回答：",
+                    "1. 为什么持续盯这只票或这条主线（thesis）",
+                    "2. 共用的关注点（user_focus）",
+                    "3. 共用的触发信号（observed_signals）",
+                    "4. 默认仓位理由（position_reason）",
+                    "5. 如果每笔有差异，再按 trade_id 单独补一句差异说明",
+                ]
+            )
+            answer_template = (
+                "共享：thesis=...；user_focus=...；observed_signals=...；position_reason=...\n"
+                "逐笔：\n"
+                + "\n".join(
+                    f"- {item.get('trade_id')}: difference=...；environment_tags=..."
+                    for item in selected_items
+                )
+            )
+        return {
+            "batch_id": f"{scope}:{group.get('group_key')}",
+            "kind": "parallel_group",
+            "scope": scope,
+            "title": title,
+            "trade_ids": [str(item.get("trade_id") or "") for item in selected_items],
+            "fields": fields,
+            "trade_refs": [self._follow_up_trade_label(item) for item in selected_items],
+            "prompt": prompt,
+            "answer_template": answer_template,
+            "question": group.get("question") or "",
+        }
+
+    def _build_single_follow_up_batch(self, item: dict[str, Any]) -> dict[str, Any]:
+        missing_context_fields = list(item.get("missing_context_fields") or [])
+        answer_fields = missing_context_fields[:5] if missing_context_fields else ["thesis", "user_focus", "observed_signals"]
+        prompt = "\n".join(
+            [
+                "请补这笔交易缺失的主观信息。",
+                f"交易：{self._follow_up_trade_label(item)}",
+                f"当前优先问题：{item.get('next_question') or '请补核心逻辑与市场环境。'}",
+                "建议优先补这些字段：",
+                *[f"- {field}" for field in answer_fields],
+            ]
+        )
+        answer_template = "；".join(f"{field}=..." for field in answer_fields)
+        return {
+            "batch_id": f"trade:{item.get('trade_id')}",
+            "kind": "single_trade",
+            "scope": "trade",
+            "title": f"单笔补问: {item.get('ts_code') or '-'} {item.get('name') or ''}".strip(),
+            "trade_ids": [str(item.get("trade_id") or "")],
+            "fields": answer_fields,
+            "trade_refs": [self._follow_up_trade_label(item)],
+            "prompt": prompt,
+            "answer_template": answer_template,
+            "question": item.get("next_question") or "",
+        }
+
+    def build_gateway_follow_up_batches(
+        self,
+        *,
+        trade_ids: list[str] | None = None,
+        status: str | None = None,
+        limit: int = 200,
+        trade_date: str | None = None,
+        ts_code: str | None = None,
+        include_complete: bool = False,
+        max_group_batches: int = 12,
+        max_group_trades: int = 6,
+        max_single_batches: int = 12,
+    ) -> dict[str, Any]:
+        backlog = self.build_trade_follow_up_backlog(
+            trade_ids=trade_ids,
+            status=status,
+            limit=limit,
+            trade_date=trade_date,
+            ts_code=ts_code,
+            include_complete=include_complete,
+        )
+        items = list(backlog.get("items") or [])
+        item_map = {str(item.get("trade_id") or ""): item for item in items if item.get("trade_id")}
+        covered_trade_ids: set[str] = set()
+        batches: list[dict[str, Any]] = []
+
+        for group in list(backlog.get("parallel_groups") or [])[:max_group_batches]:
+            batch = self._build_group_follow_up_batch(group, item_map, max_group_trades=max_group_trades)
+            if not batch:
+                continue
+            batches.append(batch)
+            covered_trade_ids.update(batch["trade_ids"])
+
+        single_candidates = [item for item in items if str(item.get("trade_id") or "") not in covered_trade_ids]
+        for item in single_candidates[:max_single_batches]:
+            batches.append(self._build_single_follow_up_batch(item))
+
+        return {
+            "summary": {
+                **dict(backlog.get("summary") or {}),
+                "group_batches": sum(1 for item in batches if item.get("kind") == "parallel_group"),
+                "single_batches": sum(1 for item in batches if item.get("kind") == "single_trade"),
+                "total_batches": len(batches),
+            },
+            "batches": batches,
+            "backlog": backlog,
+        }
+
     def import_statement_file(
         self,
         statement_path: str,
@@ -3103,23 +3597,14 @@ class FinanceJournalApp:
         path = Path(statement_path)
         if not path.exists():
             raise FileNotFoundError(f"statement file not found: {path}")
-        if path.suffix.lower() == ".json":
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                rows = payload.get("rows") or payload.get("items") or []
-            else:
-                rows = payload
-        else:
-            with path.open("r", encoding="utf-8-sig", newline="") as handle:
-                rows = list(csv.DictReader(handle))
-        if not isinstance(rows, list):
-            raise ValueError("statement payload must be a list of row objects")
+        rows = self._load_statement_rows(path)
 
         imported_items: list[dict[str, Any]] = []
         normalized_trade_date = normalize_trade_date(trade_date or self._today())
         for index, raw_row in enumerate(rows, start=1):
             row = dict(raw_row or {})
             normalized = self._normalize_statement_row(row, default_trade_date=normalized_trade_date)
+            statement_context = self._statement_context_from_row(normalized, row, source_file=path.name)
             if not normalized.get("ts_code"):
                 imported_items.append(
                     {
@@ -3159,6 +3644,11 @@ class FinanceJournalApp:
                     None,
                 )
                 if exact_trade:
+                    exact_trade = self._update_trade_statement_context(
+                        exact_trade["trade_id"],
+                        statement_context,
+                        notes=normalized.get("notes") or "",
+                    )
                     follow_up = self._statement_follow_up_payload(exact_trade)
                     imported_items.append(
                         {
@@ -3181,6 +3671,7 @@ class FinanceJournalApp:
                             open_candidates[0]["trade_id"],
                             sell_date=normalized["sell_date"],
                             sell_price=float(normalized["sell_price"]),
+                            statement_context=statement_context,
                             notes=normalized.get("notes") or "",
                         )
                         follow_up = self._statement_follow_up_payload(closed_trade)
@@ -3204,6 +3695,7 @@ class FinanceJournalApp:
                     sell_date=normalized.get("sell_date") or None,
                     sell_price=float(normalized["sell_price"]) if normalized.get("sell_price") is not None else None,
                     thesis="",
+                    statement_context=statement_context,
                     notes=normalized.get("notes") or "",
                 )
                 follow_up = self._statement_follow_up_payload(trade_row)
@@ -3220,11 +3712,13 @@ class FinanceJournalApp:
                 continue
 
             open_candidates = self._open_trade_candidates(normalized["ts_code"])
-            if len(open_candidates) == 1:
+            resolved_candidate = self._resolve_statement_close_candidate(normalized, open_candidates, statement_context)
+            if resolved_candidate:
                 closed_trade = self.close_trade(
-                    open_candidates[0]["trade_id"],
+                    resolved_candidate["trade_id"],
                     sell_date=normalized["sell_date"],
                     sell_price=float(normalized["sell_price"]),
+                    statement_context=statement_context,
                     notes=normalized.get("notes") or "",
                 )
                 follow_up = self._statement_follow_up_payload(closed_trade)
@@ -3295,6 +3789,11 @@ class FinanceJournalApp:
         }
 
         successful_items = [item for item in imported_items if item.get("trade_id")]
+        if successful_items:
+            payload["completeness_backlog"] = self.build_trade_follow_up_backlog(
+                trade_ids=[str(item.get("trade_id") or "") for item in successful_items if item.get("trade_id")],
+                include_complete=False,
+            )
         if session_key and len(successful_items) == 1:
             target = successful_items[0]
             follow_up = target.get("follow_up") or {}
@@ -3349,6 +3848,10 @@ class FinanceJournalApp:
         )
         payload["period_start"] = start_date
         payload["period_end"] = end_date
+        payload["data_completeness"] = self.build_trade_follow_up_backlog(
+            trade_ids=[str(item.get("trade_id") or "") for item in trades if item.get("trade_id")],
+            include_complete=True,
+        )
         if write_artifact:
             stem = f"evolution_report_{start_date}_{end_date}"
             payload["artifact_paths"] = self._write_artifact(end_date, stem, payload, payload.get("markdown"))
@@ -3406,6 +3909,10 @@ class FinanceJournalApp:
         )
         payload["period_start"] = start_date
         payload["period_end"] = end_date
+        payload["data_completeness"] = self.build_trade_follow_up_backlog(
+            trade_ids=[str(item.get("trade_id") or "") for item in trades if item.get("trade_id")],
+            include_complete=True,
+        )
         if write_artifact:
             stem = f"style_portrait_{start_date}_{end_date}"
             payload["artifact_paths"] = self._write_artifact(end_date, stem, payload, payload.get("markdown"))

@@ -81,6 +81,9 @@ ACTION_ALIASES = {
     "导入": "import-statement",
     "上传": "import-statement",
     "导入交割单": "import-statement",
+    "缺失": "incomplete",
+    "缺口": "incomplete",
+    "补全队列": "incomplete",
     "同步库": "sync",
     "日报": "daily",
     "解析": "parse",
@@ -464,6 +467,14 @@ def dispatch(command: str, anchor_path: Path, runtime_root: str | None = None, e
                 params["file"],
                 trade_date=params.get("trade_date"),
                 session_key=params.get("session_key"),
+            )
+        if action == "incomplete":
+            return app.build_trade_follow_up_backlog(
+                status=params.get("status"),
+                limit=int(params.get("limit", 200)),
+                trade_date=params.get("trade_date"),
+                ts_code=params.get("ts_code"),
+                include_complete=params.get("include_complete", "false").lower() in {"1", "true", "yes", "y"},
             )
         if action == "close":
             target_id = params.get("trade_id") or params.get("id")

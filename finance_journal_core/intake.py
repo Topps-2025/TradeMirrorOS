@@ -151,6 +151,24 @@ FOLLOW_UP_MAP = {
     "sell_date": "实际卖出日期是什么？",
     "sell_price": "实际卖出价格是多少？",
 }
+COMPLETENESS_FIELDS = {
+    "plan": {
+        "core": ["thesis", "user_focus", "observed_signals", "position_reason", "environment_tags"],
+        "review": ["position_confidence", "holding_period", "sell_zone"],
+    },
+    "open_trade": {
+        "core": ["thesis", "user_focus", "observed_signals", "position_reason", "environment_tags"],
+        "review": ["position_confidence", "emotion_notes", "mistake_tags", "stress_level"],
+    },
+    "closed_trade": {
+        "core": ["thesis", "user_focus", "observed_signals", "position_reason", "environment_tags"],
+        "review": ["position_confidence", "emotion_notes", "mistake_tags", "stress_level", "lessons_learned"],
+    },
+    "close_only": {
+        "core": ["observed_signals", "environment_tags"],
+        "review": ["mistake_tags", "emotion_notes", "lessons_learned"],
+    },
+}
 SOFT_STRUCTURE_NOTE = "这些标签只用于索引、检索和统计，不用于自动下单或替代你的主观判断。"
 FIELD_PURPOSES = {
     "ts_code": "先锁定标的，避免后续标签和复盘关联错对象。",
@@ -401,6 +419,21 @@ def _has_meaningful_thesis(raw_text: str, thesis: str) -> bool:
     return generic_hits <= 2 and compact != re.sub(r"[，,。；;、\s\-_/]+", "", str(raw_text or "").lower())
 
 
+def field_has_explicit_value(field_name: str, value: Any, fields: dict[str, Any] | None = None) -> bool:
+    if value in (None, "", [], {}):
+        return False
+    if isinstance(value, str):
+        text = value.strip(" ：:，,。；;")
+        if not text:
+            return False
+        if field_name == "thesis":
+            return _has_meaningful_thesis(str((fields or {}).get("notes") or ""), text)
+        return True
+    if isinstance(value, (list, tuple, set)):
+        return any(field_has_explicit_value(field_name, item, fields=fields) for item in value)
+    return True
+
+
 def required_fields_for_kind(journal_kind: str) -> list[str]:
     if journal_kind == "plan":
         return ["ts_code", "direction", "thesis", "stop_loss"]
@@ -413,6 +446,36 @@ def required_fields_for_kind(journal_kind: str) -> list[str]:
 
 def build_follow_up_questions(missing_fields: list[str]) -> list[str]:
     return [FOLLOW_UP_MAP[item] for item in missing_fields if item in FOLLOW_UP_MAP]
+
+
+def build_completeness_report(
+    fields: dict[str, Any],
+    journal_kind: str,
+    missing_fields: list[str] | None = None,
+) -> dict[str, Any]:
+    evaluation = evaluate_journal_fields(fields, journal_kind)
+    required_missing = list(missing_fields or evaluation["missing_fields"])
+    profile = COMPLETENESS_FIELDS.get(journal_kind, COMPLETENESS_FIELDS["open_trade"])
+    core_missing = [name for name in profile["core"] if not field_has_explicit_value(name, fields.get(name), fields=fields)]
+    review_missing = [name for name in profile["review"] if not field_has_explicit_value(name, fields.get(name), fields=fields)]
+    trackable_fields = profile["core"] + profile["review"]
+    filled_count = sum(1 for name in trackable_fields if field_has_explicit_value(name, fields.get(name), fields=fields))
+    total_count = len(trackable_fields)
+    blocking_fields = list(dict.fromkeys(required_missing + core_missing))
+    completion_score = 1.0 if total_count == 0 else round(filled_count / total_count, 4)
+    return {
+        "journal_kind": journal_kind,
+        "required_missing_fields": required_missing,
+        "core_missing_fields": core_missing,
+        "review_missing_fields": review_missing,
+        "blocking_missing_fields": blocking_fields,
+        "trackable_fields": trackable_fields,
+        "filled_trackable_fields": filled_count,
+        "total_trackable_fields": total_count,
+        "completion_score": completion_score,
+        "needs_follow_up": bool(blocking_fields or review_missing),
+        "ready_for_evolution": not blocking_fields,
+    }
 
 
 def build_reflection_prompts(fields: dict[str, Any], journal_kind: str, missing_fields: list[str]) -> list[dict[str, Any]]:

@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS trades (
     holding_days INTEGER,
     plan_execution_deviation_json TEXT,
     decision_context_json TEXT NOT NULL DEFAULT '{}',
+    statement_context_json TEXT NOT NULL DEFAULT '{}',
     review_status TEXT NOT NULL DEFAULT 'pending',
     status TEXT NOT NULL DEFAULT 'open',
     emotion_notes TEXT,
@@ -238,6 +239,7 @@ MIGRATION_COLUMNS: dict[str, dict[str, str]] = {
         "mistake_tags_json": "TEXT NOT NULL DEFAULT '[]'",
         "lessons_learned": "TEXT",
         "decision_context_json": "TEXT NOT NULL DEFAULT '{}'",
+        "statement_context_json": "TEXT NOT NULL DEFAULT '{}'",
     },
     "journal_drafts": {
         "session_key": "TEXT",

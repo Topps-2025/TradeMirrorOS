@@ -247,6 +247,12 @@ def build_parser() -> argparse.ArgumentParser:
     trade_import.add_argument("--file", required=True)
     trade_import.add_argument("--trade-date")
     trade_import.add_argument("--session-key")
+    trade_incomplete = trade_sub.add_parser("incomplete")
+    trade_incomplete.add_argument("--status")
+    trade_incomplete.add_argument("--limit", type=int, default=200)
+    trade_incomplete.add_argument("--trade-date")
+    trade_incomplete.add_argument("--ts-code")
+    trade_incomplete.add_argument("--include-complete", action="store_true")
     trade_list = trade_sub.add_parser("list")
     trade_list.add_argument("--status")
     trade_list.add_argument("--limit", type=int, default=50)
@@ -555,6 +561,16 @@ def main(argv: list[str] | None = None, anchor_path: Path | None = None) -> int:
                     args.file,
                     trade_date=args.trade_date,
                     session_key=args.session_key,
+                )
+            )
+        elif args.action == "incomplete":
+            _print_json(
+                app.build_trade_follow_up_backlog(
+                    status=args.status,
+                    limit=args.limit,
+                    trade_date=args.trade_date,
+                    ts_code=args.ts_code,
+                    include_complete=args.include_complete,
                 )
             )
         else:

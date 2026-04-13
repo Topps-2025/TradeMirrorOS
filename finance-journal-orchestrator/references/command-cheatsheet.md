@@ -20,6 +20,8 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py plan create
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade log --ts-code 603083 --buy-date 20260410 --buy-price 43.2 --thesis "回踩 5 日线参与" --logic-type-tags 龙头首阴,题材驱动 --pattern-tags 均线回踩 --decision-context-json '{"user_focus":["剑桥科技","消费电子链"],"observed_signals":["分时止跌","量能回暖"],"position_reason":"先开两成试错仓","position_confidence":0.62,"stress_level":4}'
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade log --ts-code 600519 --buy-date 20260410 --buy-price 1350 --thesis "高股息修复低吸" --logic-type-tags 低吸 --pattern-tags 均线回踩 --decision-context-json '{"user_focus":["贵州茅台","消费板块"],"observed_signals":["板块企稳"],"position_reason":"低波防守仓先试错","strategy_context":{"strategy_line":"高股息修复低吸","strategy_family":"半量化择时","factor_list":["股息率","板块修复","估值回归"],"factor_selection_reason":"当前更想验证高股息+板块修复的共振窗口","activation_reason":"消费板块企稳后恢复试仓","parameter_version":"dividend_repair_v2","portfolio_role":"低波防守仓","subjective_override":"公告前只开观察仓"}}'
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade import-statement --file .\examples\statement_rows.csv --trade-date 20260415 --session-key qq:user_a
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade incomplete --status open --limit 200
+python .\finance-journal-orchestrator\scripts\generate_gateway_followups.py --root .\_runtime --status open --format markdown --output .\_runtime\artifacts\daily\20260415\gateway_followups.md
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade close <trade_id> --sell-date 20260415 --sell-price 46.8 --sell-reason "达到预设止盈"
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py review run --as-of-date 20260422
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py report health --period-start 20260401 --period-end 20260430 --period-kind monthly
@@ -29,7 +31,6 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py evolution r
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py session turn --session-key qq:user_a --trade-date 20260410 --text "今天买了603083"
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py session state --session-key qq:user_a
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py session reset --session-key qq:user_a --reason "重新开始"
-python .\finance-journal-orchestrator\scripts\generate_showcase_demo.py --root .\_runtime_showcase_202602_202604 --start-date 20260203 --end-date 20260410 --brief-date 20260411 --max-trades 14
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault init
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --trade-date 20260415
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py schedule --now 2026-04-13T08:05 --dry-run
