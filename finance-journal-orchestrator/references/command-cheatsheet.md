@@ -13,6 +13,7 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory rebu
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory query --ts-code 603083 --market-stage range --tags leader,pullback
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory skillize --trade-date 20260415 --lookback-days 365
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --trade-date 20260415
+python .\finance-journal-orchestrator\scripts\run_memory_benchmark.py --root .\_runtime_benchmark --disable-market-data
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py schedule --now 2026-04-15T08:05 --dry-run
 ```
 

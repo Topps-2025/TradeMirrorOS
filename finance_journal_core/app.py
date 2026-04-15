@@ -44,6 +44,7 @@ from .memory import (
     build_memory_title,
     extract_tags,
     hyperedge_specs_for_row,
+    memory_query_tokens,
     scene_keys_for_row,
     score_memory_row,
     strategy_line_from_context,
@@ -2080,6 +2081,13 @@ class FinanceJournalApp:
     ) -> dict[str, Any]:
         token_code = normalize_ts_code(ts_code) if ts_code else ""
         requested_tags = split_tags(tags)
+        query_tokens = memory_query_tokens(
+            text=text,
+            ts_code=token_code,
+            strategy_line=str(strategy_line or ""),
+            market_stage=str(market_stage or ""),
+            tags=requested_tags,
+        )
         candidate_limit = int(limit or self.config.get("memory", {}).get("default_query_limit", 8))
         base_limit = max(candidate_limit * 3, int(self.config.get("memory", {}).get("max_query_candidates", 24)))
         if text.strip():
@@ -2103,23 +2111,40 @@ class FinanceJournalApp:
         if trade_date:
             token_date = normalize_trade_date(trade_date)
             rows = [row for row in rows if str(row.get("trade_date") or "") == token_date]
-        scored_rows: list[dict[str, Any]] = []
-        for row in rows:
-            score = score_memory_row(
+        needs_filter = bool(text or token_code or strategy_line or market_stage or requested_tags)
+        memory_scores: dict[str, dict[str, Any]] = {}
+
+        def add_memory_candidate(row: dict[str, Any], *, base_score: float | None = None, scene_boost: float = 0.0, hyperedge_boost: float = 0.0) -> None:
+            memory_id = str(row.get("memory_id") or "")
+            if not memory_id:
+                return
+            scored = score_memory_row(
                 row,
                 text=text,
                 ts_code=token_code,
                 strategy_line=str(strategy_line or ""),
                 market_stage=str(market_stage or ""),
                 tags=requested_tags,
-            )
-            if score <= 0 and (text or token_code or strategy_line or market_stage or requested_tags):
-                continue
-            row_copy = dict(row)
-            row_copy["score"] = score
-            scored_rows.append(row_copy)
-        scored_rows.sort(key=lambda item: (item.get("score") or 0.0, item.get("updated_at") or ""), reverse=True)
-        matched_cells = scored_rows[:candidate_limit]
+            ) if base_score is None else float(base_score)
+            if scored <= 0 and scene_boost <= 0 and hyperedge_boost <= 0 and needs_filter:
+                return
+            entry = memory_scores.get(memory_id)
+            if not entry:
+                row_copy = dict(row)
+                row_copy["base_score"] = round(float(scored), 4)
+                row_copy["scene_boost"] = round(float(scene_boost), 4)
+                row_copy["hyperedge_boost"] = round(float(hyperedge_boost), 4)
+                row_copy["score"] = round(float(scored) + float(scene_boost) + float(hyperedge_boost), 4)
+                memory_scores[memory_id] = row_copy
+                return
+            entry["base_score"] = max(float(entry.get("base_score") or 0.0), float(scored))
+            entry["scene_boost"] = round(float(entry.get("scene_boost") or 0.0) + float(scene_boost), 4)
+            entry["hyperedge_boost"] = round(float(entry.get("hyperedge_boost") or 0.0) + float(hyperedge_boost), 4)
+            entry["score"] = round(float(entry["base_score"]) + float(entry["scene_boost"]) + float(entry["hyperedge_boost"]), 4)
+
+        for row in rows:
+            add_memory_candidate(row)
+
         scene_candidates = self.db.fetchall("SELECT * FROM memory_scenes ORDER BY updated_at DESC LIMIT 100")
         matched_scenes: list[dict[str, Any]] = []
         for scene in scene_candidates:
@@ -2132,11 +2157,119 @@ class FinanceJournalApp:
             if market_stage and scene.get("market_stage") == market_stage:
                 scene_score += 1.5
             scene_score += float(len(scene_tags & set(requested_tags))) * 1.5
-            if scene_score > 0 or not (text or token_code or strategy_line or market_stage or requested_tags):
+            scene_text = " ".join(
+                [
+                    str(scene.get("title") or ""),
+                    str(scene.get("description") or ""),
+                    str(scene.get("scene_key") or ""),
+                    " ".join(scene_tags),
+                ]
+            ).lower()
+            for token in query_tokens:
+                if token and token.lower() in scene_text:
+                    scene_score += 0.35
+            if scene_score > 0 or not needs_filter:
                 scene_copy = dict(scene)
                 scene_copy["score"] = round(scene_score, 4)
                 matched_scenes.append(scene_copy)
         matched_scenes.sort(key=lambda item: (item.get("score") or 0.0, item.get("updated_at") or ""), reverse=True)
+
+        scene_expansion_ids: set[str] = set()
+        for scene in matched_scenes[: max(candidate_limit, 5)]:
+            scene_memory_ids = split_tags(json_loads(scene.get("memory_ids_json"), []))
+            scene_bonus = max(0.4, round(float(scene.get("score") or 0.0) * 0.35, 4))
+            for memory_id in scene_memory_ids[: max(candidate_limit * 2, 8)]:
+                if memory_id:
+                    scene_expansion_ids.add(memory_id)
+                    if memory_id in memory_scores:
+                        memory_scores[memory_id]["scene_boost"] = round(float(memory_scores[memory_id].get("scene_boost") or 0.0) + scene_bonus, 4)
+                        memory_scores[memory_id]["score"] = round(
+                            float(memory_scores[memory_id].get("base_score") or 0.0)
+                            + float(memory_scores[memory_id].get("scene_boost") or 0.0)
+                            + float(memory_scores[memory_id].get("hyperedge_boost") or 0.0),
+                            4,
+                        )
+
+        matched_hyperedges: list[dict[str, Any]] = []
+        edge_candidates = self.db.fetchall("SELECT * FROM memory_hyperedges ORDER BY updated_at DESC LIMIT 200")
+        requested_tag_set = set(requested_tags)
+        for edge in edge_candidates:
+            edge_score = 0.0
+            edge_key = str(edge.get("edge_key") or "")
+            edge_label = str(edge.get("label") or "")
+            edge_tags = set(split_tags(json_loads(edge.get("tags_json"), [])))
+            if token_code and edge_key == f"symbol:{token_code}":
+                edge_score += 3.0
+            if strategy_line and edge_key == f"strategy:{strategy_line}":
+                edge_score += 2.5
+            if market_stage and edge_key == f"stage:{market_stage}":
+                edge_score += 1.5
+            edge_score += float(len(edge_tags & requested_tag_set)) * 1.5
+            edge_text = f"{edge_key} {edge_label} {' '.join(edge_tags)}".lower()
+            for token in query_tokens:
+                if token and token.lower() in edge_text:
+                    edge_score += 0.35
+            if edge_score > 0 or not needs_filter:
+                edge_copy = dict(edge)
+                edge_copy["score"] = round(edge_score, 4)
+                matched_hyperedges.append(edge_copy)
+        matched_hyperedges.sort(key=lambda item: (item.get("score") or 0.0, item.get("updated_at") or ""), reverse=True)
+
+        hyperedge_expansion_ids: set[str] = set()
+        for edge in matched_hyperedges[: max(candidate_limit * 2, 8)]:
+            memberships = self.db.fetchall(
+                "SELECT member_kind, member_id FROM memory_hyperedge_members WHERE edge_id = ?",
+                (edge.get("edge_id") or "",),
+            )
+            edge_bonus = max(0.35, round(float(edge.get("score") or 0.0) * 0.3, 4))
+            for membership in memberships:
+                if membership.get("member_kind") == "memory":
+                    memory_id = str(membership.get("member_id") or "")
+                    if not memory_id:
+                        continue
+                    hyperedge_expansion_ids.add(memory_id)
+                    if memory_id in memory_scores:
+                        memory_scores[memory_id]["hyperedge_boost"] = round(float(memory_scores[memory_id].get("hyperedge_boost") or 0.0) + edge_bonus, 4)
+                        memory_scores[memory_id]["score"] = round(
+                            float(memory_scores[memory_id].get("base_score") or 0.0)
+                            + float(memory_scores[memory_id].get("scene_boost") or 0.0)
+                            + float(memory_scores[memory_id].get("hyperedge_boost") or 0.0),
+                            4,
+                        )
+                    continue
+                if membership.get("member_kind") == "scene":
+                    scene_row = self.db.fetchone("SELECT * FROM memory_scenes WHERE scene_id = ?", (membership.get("member_id") or "",))
+                    if not scene_row:
+                        continue
+                    for memory_id in split_tags(json_loads(scene_row.get("memory_ids_json"), []))[: max(candidate_limit * 2, 8)]:
+                        if not memory_id:
+                            continue
+                        hyperedge_expansion_ids.add(memory_id)
+                        if memory_id in memory_scores:
+                            memory_scores[memory_id]["hyperedge_boost"] = round(float(memory_scores[memory_id].get("hyperedge_boost") or 0.0) + edge_bonus * 0.8, 4)
+                            memory_scores[memory_id]["score"] = round(
+                                float(memory_scores[memory_id].get("base_score") or 0.0)
+                                + float(memory_scores[memory_id].get("scene_boost") or 0.0)
+                                + float(memory_scores[memory_id].get("hyperedge_boost") or 0.0),
+                                4,
+                            )
+
+        expansion_ids = (scene_expansion_ids | hyperedge_expansion_ids) - set(memory_scores.keys())
+        for memory_id in sorted(expansion_ids):
+            row = self.db.fetchone("SELECT * FROM memory_cells WHERE memory_id = ?", (memory_id,))
+            if not row:
+                continue
+            add_memory_candidate(
+                row,
+                scene_boost=max(0.0, 0.5 if memory_id in scene_expansion_ids else 0.0),
+                hyperedge_boost=max(0.0, 0.45 if memory_id in hyperedge_expansion_ids else 0.0),
+            )
+
+        matched_cells = sorted(
+            memory_scores.values(),
+            key=lambda item: (item.get("score") or 0.0, item.get("updated_at") or ""),
+            reverse=True,
+        )[:candidate_limit]
         skill_rows = self.db.fetchall("SELECT * FROM memory_skill_cards ORDER BY updated_at DESC LIMIT 100")
         linked_skill_cards: list[dict[str, Any]] = []
         for skill in skill_rows:
@@ -2165,8 +2298,15 @@ class FinanceJournalApp:
             },
             "matched_cells": matched_cells,
             "matched_scenes": matched_scenes[:candidate_limit],
+            "matched_hyperedges": matched_hyperedges[:candidate_limit],
             "linked_skill_cards": linked_skill_cards[:candidate_limit],
             "memory_checklist": checklist[:5],
+            "retrieval_debug": {
+                "base_candidate_count": len(rows),
+                "scored_cell_count": len(memory_scores),
+                "scene_expanded_cell_count": len(scene_expansion_ids),
+                "hyperedge_expanded_cell_count": len(hyperedge_expansion_ids),
+            },
         }
 
     def skillize_memory(self, lookback_days: int = 365, trade_date: str | None = None, min_samples: int | None = None) -> dict[str, Any]:

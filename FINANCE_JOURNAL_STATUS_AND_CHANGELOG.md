@@ -19,6 +19,7 @@ Finance Journal is currently positioned as:
 - kept bandit as the top-layer prioritization mechanism for self-evolution reminders
 - updated the community vision toward linked memories plus reusable skill cards
 - added a paper-style architecture note for formal design communication
+- added an OpenClaw demo workflow note and a first retrieval benchmark harness
 
 ## Version History
 

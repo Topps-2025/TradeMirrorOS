@@ -29,8 +29,12 @@ Not implemented yet:
 
 ## Research and Publication Packaging
 
+Partially implemented:
+- a first retrieval benchmark harness now exists for `fts_only`, `structured_only`, `hybrid_cell_only`, and `graph_hybrid`
+- a paper-style architecture note now exists in `TRADE_MEMORY_SYSTEM_PAPER.md`
+
 Still open:
-- a benchmark section with quantitative ablations for FTS / hyperedge / bandit stages
+- larger-scale quantitative ablations for FTS / hyperedge / bandit stages
 - a reproducible paper build pipeline such as Pandoc, Quarto, or LaTeX export scripts
 - automated dataset sanitization for private-to-public artifact release
 - a formal evaluation harness for memory skill-card precision and recall

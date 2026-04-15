@@ -47,6 +47,8 @@ Updated: 2026-04-15
 
 - `TRADE_MEMORY_ARCHITECTURE.md` for the concise design note
 - `TRADE_MEMORY_SYSTEM_PAPER.md` for the paper-style architecture write-up
+- `OPENCLAW_DEMO_WORKFLOW.md` for classroom-ready OpenClaw interaction demos
+- `MEMORY_RETRIEVAL_BENCHMARK.md` plus `run_memory_benchmark.py` for retrieval evaluation
 - updated public/private sync policy in `README.md` and `README.zh-CN.md`
 - legacy news bootstrap tables removed from the active schema bootstrap
 

@@ -50,6 +50,7 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py evolution r
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory rebuild
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory query --ts-code 603083 --market-stage range --tags pullback,repair_flow
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory skillize --trade-date 20260415 --lookback-days 365
+python .\finance-journal-orchestrator\scripts\run_memory_benchmark.py --root .\_runtime_benchmark --disable-market-data
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --trade-date 20260415
 ```
 
@@ -57,6 +58,8 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync 
 
 - `TRADE_MEMORY_ARCHITECTURE.md`?EverOS / EverMemOS / HyperMem ??????????
 - `TRADE_MEMORY_SYSTEM_PAPER.md`???????????????????? LaTeX / Pandoc ????
+- `OPENCLAW_DEMO_WORKFLOW.md`???????? OpenClaw ?????
+- `MEMORY_RETRIEVAL_BENCHMARK.md`??? benchmark?baseline ???????
 - `IMPLEMENTED_FEATURES.md`????????
 - `NOT_IMPLEMENTED_YET.md`??????????
 

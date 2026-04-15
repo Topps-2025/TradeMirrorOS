@@ -50,6 +50,7 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py evolution r
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory rebuild
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory query --ts-code 603083 --market-stage range --tags pullback,repair_flow
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory skillize --trade-date 20260415 --lookback-days 365
+python .\finance-journal-orchestrator\scripts\run_memory_benchmark.py --root .\_runtime_benchmark --disable-market-data
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --trade-date 20260415
 ```
 
@@ -57,6 +58,8 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync 
 
 - `TRADE_MEMORY_ARCHITECTURE.md`: concise design note for the EverOS / EverMemOS / HyperMem inspired memory stack
 - `TRADE_MEMORY_SYSTEM_PAPER.md`: paper-style architecture write-up with LaTeX-ready equations and implementation mapping
+- `OPENCLAW_DEMO_WORKFLOW.md`: end-to-end OpenClaw classroom demo flow
+- `MEMORY_RETRIEVAL_BENCHMARK.md`: benchmark design, baselines, and current local results
 - `IMPLEMENTED_FEATURES.md`: what is already done
 - `NOT_IMPLEMENTED_YET.md`: what remains intentionally open
 
