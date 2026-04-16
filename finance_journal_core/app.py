@@ -3913,6 +3913,33 @@ class FinanceJournalApp:
     def _trade_statement_id(self, trade: dict[str, Any], leg_key: str = "buy_leg") -> str:
         return str(self._trade_statement_leg_value(trade, "statement_id", leg_key=leg_key) or "").strip()
 
+    def _trade_sell_date_matches(self, trade: dict[str, Any], sell_date: str) -> bool:
+        left = normalize_trade_date(trade.get("sell_date")) if trade.get("sell_date") else ""
+        right = normalize_trade_date(sell_date) if sell_date else ""
+        return left == right
+
+    def _find_existing_trade_clone(self, source_trade: dict[str, Any]) -> dict[str, Any] | None:
+        candidates = self.db.fetchall(
+            "SELECT * FROM trades WHERE ts_code = ? AND buy_date = ? ORDER BY updated_at DESC LIMIT 20",
+            (source_trade.get("ts_code") or "", source_trade.get("buy_date") or ""),
+        )
+        source_buy_qty = self._trade_statement_quantity(source_trade, leg_key="buy_leg")
+        source_sell_qty = self._trade_statement_quantity(source_trade, leg_key="sell_leg")
+        source_sell_price = _coalesce_float(source_trade.get("sell_price"))
+        for candidate in candidates:
+            if not self._trade_price_matches(candidate.get("buy_price"), source_trade.get("buy_price")):
+                continue
+            if not self._trade_statement_quantity_matches(candidate, source_buy_qty, leg_key="buy_leg"):
+                continue
+            if not self._trade_sell_date_matches(candidate, source_trade.get("sell_date") or ""):
+                continue
+            if source_sell_price is not None and not self._trade_price_matches(candidate.get("sell_price"), source_sell_price):
+                continue
+            if source_sell_qty is not None and not self._trade_statement_quantity_matches(candidate, source_sell_qty, leg_key="sell_leg"):
+                continue
+            return candidate
+        return None
+
     def _filtered_statement_close_candidates(
         self,
         normalized: dict[str, Any],
@@ -4628,6 +4655,103 @@ class FinanceJournalApp:
             )
             payload["session_state"] = self._build_session_state_payload(session_key)
         return payload
+
+    def adopt_prior_holdings(
+        self,
+        source_db_path: str,
+        *,
+        visible_start_date: str,
+    ) -> dict[str, Any]:
+        source_db = FinanceJournalDB(Path(source_db_path))
+        normalized_start = normalize_trade_date(visible_start_date)
+        source_trades = source_db.fetchall(
+            """
+            SELECT * FROM trades
+            WHERE buy_date < ? AND (sell_date >= ? OR status = 'open' OR sell_date = '')
+            ORDER BY buy_date ASC, updated_at ASC
+            """,
+            (normalized_start, normalized_start),
+        )
+
+        imported_items: list[dict[str, Any]] = []
+        for source_trade in source_trades:
+            existing = self._find_existing_trade_clone(source_trade)
+            if existing:
+                imported_items.append(
+                    {
+                        "status": "matched_existing",
+                        "source_trade_id": source_trade.get("trade_id") or "",
+                        "trade_id": existing.get("trade_id") or "",
+                        "ts_code": source_trade.get("ts_code") or "",
+                    }
+                )
+                continue
+
+            decision_context = json_loads(source_trade.get("decision_context_json"), {}) or {}
+            carry_forward_meta = {
+                "enabled": True,
+                "source_trade_id": source_trade.get("trade_id") or "",
+                "source_db_path": str(Path(source_db_path)),
+                "visible_start_date": normalized_start,
+            }
+            decision_context["carry_forward"] = carry_forward_meta
+
+            statement_context = json_loads(source_trade.get("statement_context_json"), {}) or {}
+            statement_context["carry_forward"] = carry_forward_meta
+            notes_prefix = f"[carry-forward] prior holding adopted for {normalized_start}"
+            combined_notes = "\n".join(
+                part for part in [notes_prefix, source_trade.get("notes") or ""] if part
+            ).strip()
+
+            cloned_trade = self.log_trade(
+                ts_code=source_trade["ts_code"],
+                name=source_trade.get("name") or None,
+                plan_id=source_trade.get("plan_id") or None,
+                buy_date=source_trade["buy_date"],
+                buy_price=float(source_trade["buy_price"]),
+                thesis=source_trade.get("thesis") or "",
+                direction=source_trade.get("direction") or "long",
+                buy_reason=source_trade.get("buy_reason") or "",
+                buy_position=source_trade.get("buy_position") or "",
+                sell_date=source_trade.get("sell_date") or None,
+                sell_price=float(source_trade["sell_price"]) if source_trade.get("sell_price") is not None else None,
+                sell_reason=source_trade.get("sell_reason") or "",
+                sell_position=source_trade.get("sell_position") or "",
+                position_size_pct=_coalesce_float(source_trade.get("position_size_pct")),
+                logic_type_tags=json_loads(source_trade.get("logic_type_tags_json"), []),
+                pattern_tags=json_loads(source_trade.get("pattern_tags_json"), []),
+                theme=source_trade.get("theme") or None,
+                market_stage_tag=source_trade.get("market_stage_tag") or None,
+                environment_tags=json_loads(source_trade.get("environment_tags_json"), []),
+                emotion_notes=source_trade.get("emotion_notes") or None,
+                mistake_tags=json_loads(source_trade.get("mistake_tags_json"), []),
+                lessons_learned=source_trade.get("lessons_learned") or None,
+                decision_context=decision_context,
+                statement_context=statement_context,
+                notes=combined_notes,
+                fetch_snapshot=False,
+            )
+            imported_items.append(
+                {
+                    "status": "imported_prior_holding",
+                    "source_trade_id": source_trade.get("trade_id") or "",
+                    "trade_id": cloned_trade.get("trade_id") or "",
+                    "ts_code": source_trade.get("ts_code") or "",
+                    "buy_date": source_trade.get("buy_date") or "",
+                    "sell_date": source_trade.get("sell_date") or "",
+                }
+            )
+
+        return {
+            "source_db_path": str(Path(source_db_path)),
+            "visible_start_date": normalized_start,
+            "summary": {
+                "source_candidates": len(source_trades),
+                "imported_prior_holding": sum(1 for item in imported_items if item.get("status") == "imported_prior_holding"),
+                "matched_existing": sum(1 for item in imported_items if item.get("status") == "matched_existing"),
+            },
+            "items": imported_items,
+        }
 
     def _evolution_source_rows(self, start_date: str, end_date: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         trades = self.db.fetchall(

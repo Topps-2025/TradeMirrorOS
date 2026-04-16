@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from finance_journal_core.app import FinanceJournalApp
+from finance_journal_core.storage import FinanceJournalDB, now_ts
 from finance_journal_core.gateway import dispatch
 
 
@@ -239,6 +240,138 @@ class FinanceJournalSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(float(context["sell_leg"]["quantity"]), 300.0, places=6)
         self.assertEqual(len(context["buy_leg"]["statement_ids"]), 2)
         self.assertEqual(len(context["sell_leg"]["statement_ids"]), 2)
+
+    def test_adopt_prior_holdings_copies_pre_range_positions(self) -> None:
+        previous_db_path = self.runtime_root / "previous.db"
+        previous_db = FinanceJournalDB(previous_db_path)
+        previous_db.init_schema()
+        timestamp = now_ts()
+        previous_db.execute(
+            """
+            INSERT INTO trades(
+                trade_id, plan_id, ts_code, name, direction, thesis, buy_date, buy_price,
+                buy_reason, buy_position, sell_date, sell_price, sell_reason, sell_position,
+                position_size_pct, logic_type_tags_json, pattern_tags_json, theme,
+                market_stage_tag, environment_tags_json, snapshot_id, benchmark_return_pct,
+                actual_return_pct, timing_alpha_pct, holding_days, plan_execution_deviation_json,
+                decision_context_json, statement_context_json,
+                review_status, status, emotion_notes, mistake_tags_json, lessons_learned, notes, created_at, updated_at
+            ) VALUES(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                "carry_src_1",
+                "",
+                "600000.SH",
+                "PFYH",
+                "long",
+                "legacy holding",
+                "20260228",
+                10.5,
+                "",
+                "",
+                "20260303",
+                10.8,
+                "",
+                "",
+                None,
+                "[]",
+                "[]",
+                "",
+                "",
+                "[]",
+                "",
+                None,
+                None,
+                None,
+                None,
+                "{}",
+                "{}",
+                json.dumps(
+                    {
+                        "buy_leg": {"quantity": 300, "statement_id": "old_buy_1"},
+                        "sell_leg": {"quantity": 300, "statement_id": "old_sell_1"},
+                    },
+                    ensure_ascii=False,
+                ),
+                "pending",
+                "closed",
+                "",
+                "[]",
+                "",
+                "from old ledger",
+                timestamp,
+                timestamp,
+            ),
+        )
+        previous_db.execute(
+            """
+            INSERT INTO trades(
+                trade_id, plan_id, ts_code, name, direction, thesis, buy_date, buy_price,
+                buy_reason, buy_position, sell_date, sell_price, sell_reason, sell_position,
+                position_size_pct, logic_type_tags_json, pattern_tags_json, theme,
+                market_stage_tag, environment_tags_json, snapshot_id, benchmark_return_pct,
+                actual_return_pct, timing_alpha_pct, holding_days, plan_execution_deviation_json,
+                decision_context_json, statement_context_json,
+                review_status, status, emotion_notes, mistake_tags_json, lessons_learned, notes, created_at, updated_at
+            ) VALUES(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                "carry_src_2",
+                "",
+                "600001.SH",
+                "TEST",
+                "long",
+                "legacy open",
+                "20260220",
+                8.2,
+                "",
+                "",
+                "",
+                None,
+                "",
+                "",
+                None,
+                "[]",
+                "[]",
+                "",
+                "",
+                "[]",
+                "",
+                None,
+                None,
+                None,
+                None,
+                "{}",
+                "{}",
+                json.dumps({"buy_leg": {"quantity": 500, "statement_id": "old_buy_2"}}, ensure_ascii=False),
+                "pending",
+                "open",
+                "",
+                "[]",
+                "",
+                "",
+                timestamp,
+                timestamp,
+            ),
+        )
+
+        payload = self.app.adopt_prior_holdings(str(previous_db_path), visible_start_date="20260302")
+        self.assertEqual(payload["summary"]["source_candidates"], 2)
+        self.assertEqual(payload["summary"]["imported_prior_holding"], 2)
+
+        trades = self.app.db.fetchall("SELECT * FROM trades ORDER BY buy_date ASC")
+        self.assertEqual(len(trades), 2)
+        first_context = json.loads(trades[0]["statement_context_json"] or "{}")
+        self.assertTrue(first_context.get("carry_forward", {}).get("enabled"))
+        self.assertEqual(first_context.get("carry_forward", {}).get("source_trade_id"), "carry_src_2")
+
+        payload_again = self.app.adopt_prior_holdings(str(previous_db_path), visible_start_date="20260302")
+        self.assertEqual(payload_again["summary"]["matched_existing"], 2)
+        self.assertEqual(self.app.db.fetchall("SELECT * FROM trades"), trades)
 
     def test_schedule_uses_memory_compaction(self) -> None:
         self.app.log_trade(
