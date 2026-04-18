@@ -1,0 +1,4 @@
+interface:
+  display_name: "Finance Journal Sync"
+  short_description: "Run Finance Journal sync flows safely"
+  default_prompt: "Use $finance-journal-sync to decide and execute the correct private or public sync flow."

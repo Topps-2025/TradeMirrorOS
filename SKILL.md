@@ -16,7 +16,8 @@ description: Workspace-level routing skill for the Finance Journal framework. Us
 
 ## Route by Intent
 
-- session journaling, draft continuation, statement import, vault sync, private repo pull/push, OpenClaw cloud sync -> `$finance-journal-orchestrator`
+- session journaling, draft continuation, statement import, vault sync -> `$finance-journal-orchestrator`
+- private repo pull / push, cloud-to-local sync, local-to-cloud sync, and public-vs-private repo routing -> `$finance-journal-sync`
 - plan creation, updates, and reference generation -> `$trade-plan-assistant`
 - trade logs, post-trade review, self-evolution, style portrait -> `$trade-evolution-engine`
 - discipline and health reporting -> `$behavior-health-reporter`

@@ -32,7 +32,7 @@ description: OpenClaw-facing orchestration skill for conversation-first trade jo
 - behavior health report -> `$behavior-health-reporter`
 - vault export and dashboard -> stay in this skill
 - long-term memory rebuild / query / skillize -> stay in this skill
-- private repo pull / push, cloud-to-local sync, local-to-cloud sync, and public-vs-private repo routing -> stay in this skill
+- private repo pull / push, cloud-to-local sync, local-to-cloud sync, and public-vs-private repo routing -> `$finance-journal-sync`
 
 ## Output Discipline
 
