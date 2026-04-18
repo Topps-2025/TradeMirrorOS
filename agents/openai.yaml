@@ -1,4 +1,4 @@
 schema_version: 1
-name_for_human: Finance Journal
+name_for_human: TradeMirrorOS
 name_for_model: finance_journal
-short_description: "Route trade journaling, long-term memory retrieval, self-evolution, and behavior review across the workspace"
+short_description: "Route trading-memory journaling, knowledge-graph exports, self-check diagnostics, and self-evolution workflows across the workspace"

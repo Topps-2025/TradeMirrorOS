@@ -76,9 +76,16 @@ ACTION_ALIASES = {
     "reset": "reset",
     "重置": "reset",
     "sync": "sync",
+    "sync-all": "sync-all",
+    "sync-root": "sync-all",
+    "sync-private": "sync-all",
     "daily": "daily",
     "dashboard": "dashboard",
+    "graph": "graph",
+    "mirror-root": "mirror-root",
     "rebuild": "rebuild",
+    "self-check": "self-check",
+    "doctor": "self-check",
     "query": "query",
     "查询": "query",
     "skillize": "skillize",
@@ -142,6 +149,8 @@ KEY_ALIASES = {
     "mode": "mode",
     "status": "status",
     "limit": "limit",
+    "full": "full",
+    "clean": "clean",
     "tags": "tags",
     "strategy_line": "strategy_line",
     "title": "title",
@@ -161,6 +170,10 @@ KEY_ALIASES = {
     "summary_markdown": "summary_markdown",
     "community_shareable": "community_shareable",
     "intent": "intent",
+    "start_date": "start_date",
+    "end_date": "end_date",
+    "sync_vault_after": "sync_vault_after",
+    "rebuild_memory_views": "rebuild_memory_views",
 }
 
 
@@ -169,7 +182,7 @@ def _print(payload: Any) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Finance Journal OpenClaw gateway")
+    parser = argparse.ArgumentParser(description="TradeMirrorOS OpenClaw gateway")
     parser.add_argument("action", choices=["command"], nargs="?", default="command")
     parser.add_argument("--root", help="Runtime root for data/artifacts")
     parser.add_argument("--disable-market-data", action="store_true")
@@ -388,7 +401,14 @@ def dispatch(command: str, anchor_path: Path, runtime_root: str | None = None, e
 
     if domain == "vault":
         if action == "sync":
-            return app.sync_vault(trade_date=params.get("trade_date"), limit=int(params.get("limit", 200)))
+            return app.sync_vault(
+                trade_date=params.get("trade_date"),
+                limit=int(params.get("limit", 200)),
+                full=params.get("full", "false").lower() in {"1", "true", "yes", "y"},
+                clean=params.get("clean", "false").lower() in {"1", "true", "yes", "y"},
+            )
+        if action == "sync-all":
+            return app.sync_repo_snapshot()
         if action == "daily":
             return app.export_daily_note(params["trade_date"])
         if action == "plan":
@@ -403,10 +423,26 @@ def dispatch(command: str, anchor_path: Path, runtime_root: str | None = None, e
             return app.export_memory_note(params.get("memory_id") or params.get("id") or "")
         if action == "skill":
             return app.export_skill_note(params.get("skill_id") or params.get("id") or "")
+        if action == "graph":
+            return app.export_graph_note()
+        if action == "mirror-root":
+            return app.mirror_runtime_exports_to_repo_root()
         return app.export_dashboard_note()
 
     if domain == "schedule":
         return app.run_schedule(now=params.get("now"), force=params.get("force", "false").lower() in {"1", "true", "yes", "y"}, dry_run=params.get("dry_run", "false").lower() in {"1", "true", "yes", "y"})
+
+    if domain == "maintenance":
+        if action == "self-check":
+            return app.runtime_self_check()
+        if action == "purge-range":
+            return app.purge_records_in_date_range(
+                params["start_date"],
+                params["end_date"],
+                rebuild_memory_views=params.get("rebuild_memory_views", "true").lower() in {"1", "true", "yes", "y"},
+                sync_vault_after=params.get("sync_vault_after", "true").lower() in {"1", "true", "yes", "y"},
+            )
+        raise ValueError(f"unsupported maintenance action: {action}")
 
     raise ValueError(f"unsupported domain: {domain}")
 

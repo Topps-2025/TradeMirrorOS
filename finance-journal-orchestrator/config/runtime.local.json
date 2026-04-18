@@ -1,5 +1,5 @@
 {
-  "default_root": "D:/skills/finance-journal/_runtime",
+  "default_root": "",
   "schedules": {
     "memory_compaction_time": "08:00",
     "plan_reminder_time": "08:30",

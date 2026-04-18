@@ -1,4 +1,4 @@
-# Command Cheatsheet
+# TradeMirrorOS Command Cheatsheet
 
 ## CLI
 
@@ -13,6 +13,12 @@ python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory rebu
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory query --ts-code 603083 --market-stage range --tags leader,pullback
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory skillize --trade-date 20260415 --lookback-days 365
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --trade-date 20260415
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --full --clean
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault graph
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault mirror-root
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync-all
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py maintenance self-check
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py maintenance purge-range --start-date 20260201 --end-date 20260331
 python .\finance-journal-orchestrator\scripts\run_memory_benchmark.py --root .\_runtime_benchmark --disable-market-data
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory revise memory_trade_xxx --add-tags error_cluster:trend_conflict --quality-score -8 --market-stage downtrend --correction-note "wrong thesis for downtrend"
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory skill-edit skill_quality_path_xxx --add-do-not-use-when "when the market is shrinking and trending down"
@@ -27,4 +33,10 @@ python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --comma
 python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "trade log ts_code=603083 buy_date=20260410 buy_price=43.2 thesis='pullback to 5-day moving average' logic_tags=leader,pullback pattern_tags=ma_pullback market_stage=range environment_tags=repair_flow,CPO"
 python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "memory query ts_code=603083 market_stage=range tags=leader,pullback"
 python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "memory skillize trade_date=20260415 lookback_days=365 min_samples=2"
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "vault graph"
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "vault mirror-root"
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "vault sync full=true clean=true"
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "vault sync-all"
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "maintenance self-check"
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "maintenance purge-range start_date=20260201 end_date=20260331"
 ```

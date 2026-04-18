@@ -1,74 +1,83 @@
-# Finance Journal
+# TradeMirrorOS
 
-Finance Journal is now focused on one core problem: combining OpenClaw-style orchestration with long-term trading memory.
+TradeMirrorOS is a local-first operating layer for trading memory.
 
-It is a local-first framework for:
-- conversation-first trade journaling
-- structured plan / trade / review records
-- long-term memory storage and retrieval
-- trajectory self-evolution with bandit reranking
-- memory-to-skill solidification for reusable trading know-how
+It mirrors your plans, executions, mistakes, effective paths, and review loops back to you so they become durable, searchable, and reusable instead of disappearing into chat history.
 
-It is not a news monitor, announcement crawler, or copy-trading system.
+- Public repo: <https://github.com/Topps-2025/TradeMirrorOS.git>
+- Chinese README: [`README.zh-CN.md`](README.zh-CN.md)
+- Promo copy: [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md) / [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
 
-## Current Architecture
+## Why the name
 
-- `finance-journal-orchestrator/`: OpenClaw-facing entry, session gateway, references
-- `trade-plan-assistant/`: plan creation and historical reference
-- `trade-evolution-engine/`: trade logs, review loop, self-evolution outputs
-- `behavior-health-reporter/`: behavior and discipline reports
-- `finance_journal_core/`: shared runtime, storage, memory, retrieval, vault export
-- `tests/`: smoke tests for the memory-centric workflow
+- `Trade`: this is for trading behavior, not a general chat memory layer.
+- `Mirror`: it reflects your historical behavior, cognition, errors, and valid paths back to you.
+- `OS`: it acts as an operating layer, not a single-purpose utility.
 
-## Runtime Layout
+In plain English, TradeMirrorOS is a trading-memory operating system for human-machine co-evolution.
 
-- SQLite database: `_runtime/data/finance_journal.db`
-- Daily artifacts: `_runtime/artifacts/daily/YYYYMMDD/`
-- Long-term memory snapshots: `_runtime/memory/`
-- Markdown vault: `_runtime/obsidian-vault/`
+## What it is
 
-## Long-Term Memory Design
+- conversation-first journaling for plans, trades, reviews, and corrections
+- structured storage backed by SQLite and markdown exports
+- long-term memory with memory cells, scenes, hyperedges, and skill cards
+- local knowledge-graph snapshots that update with the database
+- OpenClaw-friendly orchestration for daily capture, review, and recall
 
-The current memory layer uses:
-- `memory_cells`: atomic memory units built from plans, trades, and reviews
-- `memory_scenes`: scene-level aggregates such as symbol, setup, stage, and strategy-line scenes
-- `memory_hyperedges`: multi-node relations for setup, risk, strategy, regime, and symbol linkage
-- `memory_skill_cards`: reusable skill cards distilled from stable historical paths
+## What it is not
 
-Retrieval is coarse-to-fine:
-1. SQLite FTS5 + structured filters
-2. scene / hyperedge expansion
-3. bandit-aware reminder reranking
+- not a signal-calling system
+- not an auto-trading agent
+- not just a ledger
+- not a generic note dump
+
+It is a cognitive mirror plus long-term memory layer for trading work.
+
+## Runtime vs Repo Snapshot
+
+The most important operational distinction is:
+
+- live runtime: `_runtime/`
+- git-friendly mirror snapshot: `artifacts/` and `obsidian-vault/` at repo root
+
+The live database and live Obsidian exports are generated under `_runtime/`.
+The repo-root `artifacts/` and `obsidian-vault/` are mirrored snapshots that exist so git can carry them across machines.
+
+If OpenClaw points at the wrong `runtime_root`, it can read an older ledger even when the repository itself is up to date.
 
 ## Key Commands
 
 ```powershell
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py init
 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py session turn --session-key qq:user_a --trade-date 20260410 --text "Bought 603083 on a pullback setup"
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py trade import-statement --file .\examples\statement_rows.csv --trade-date 20260415 --session-key qq:user_a
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py evolution remind --logic-tags pullback,leader --pattern-tags ma_pullback --market-stage range --environment-tags repair_flow
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory rebuild
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory query --ts-code 603083 --market-stage range --tags pullback,repair_flow
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py memory skillize --trade-date 20260415 --lookback-days 365
-python .\finance-journal-orchestrator\scripts\run_memory_benchmark.py --root .\_runtime_benchmark --disable-market-data
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --trade-date 20260415
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --full --clean
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync-all
+python .\finance-journal-orchestrator\scripts\finance_journal_cli.py maintenance self-check
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "vault sync-all"
+python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "maintenance self-check"
 ```
 
-## Design Notes
+## Recommended Local Sync Flow
 
-- `TRADE_MEMORY_ARCHITECTURE.md`: concise design note for the EverOS / EverMemOS / HyperMem inspired memory stack
-- `TRADE_MEMORY_SYSTEM_PAPER.md`: paper-style architecture write-up with LaTeX-ready equations and implementation mapping
-- `OPENCLAW_DEMO_WORKFLOW.md`: end-to-end OpenClaw classroom demo flow
-- `MEMORY_RETRIEVAL_BENCHMARK.md`: benchmark design, baselines, and current local results
-- `ERROR_INPUT_CORRECTION.md`: how the framework exposes, patches, and demotes wrong trade theses
-- `IMPLEMENTED_FEATURES.md`: what is already done
-- `NOT_IMPLEMENTED_YET.md`: what remains intentionally open
+1. Write or import trades into `_runtime/data/finance_journal.db`.
+2. Run `vault sync-all` to rebuild the runtime vault and mirror exports to repo root.
+3. Commit and push the mirrored repo snapshot.
+4. On another machine or in OpenClaw cloud, pull the repo and run `maintenance self-check`.
 
-## Repo Sync Policy
+## Current Architecture
 
-- Public GitHub (`origin/main`) receives the core code, tests, and documentation.
-- Private GitHub (`github-private/private-sync`) may additionally receive runtime data, broker statement exports, and local vault snapshots.
-- `_runtime*`, `*.db`, and broker statement spreadsheets stay ignored by default and should only be force-added for private syncs.
+- `finance-journal-orchestrator/`: OpenClaw-facing entry, gateway scripts, and references
+- `trade-plan-assistant/`: plan creation and historical reference
+- `trade-evolution-engine/`: trade reviews, reminders, self-evolution outputs
+- `behavior-health-reporter/`: behavior and discipline reports
+- `finance_journal_core/`: runtime, storage, memory, retrieval, and vault export
+- `tests/`: local validation for journaling and memory workflows
+
+## Public / Private Sync Policy
+
+- Public GitHub (`origin/main`) is now the TradeMirrorOS code and documentation surface.
+- Private sync branches can still carry runtime mirrors and sensitive ledger snapshots when needed.
+- `_runtime*`, `*.db`, and broker exports remain ignored by default.
 
 ## Validation
 

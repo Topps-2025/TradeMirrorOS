@@ -23,7 +23,7 @@ def _parse_json_argument(text: str | None) -> dict[str, Any] | None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Finance Journal OpenClaw skill CLI")
+    parser = argparse.ArgumentParser(description="TradeMirrorOS OpenClaw skill CLI")
     parser.add_argument("--root", help="Runtime root for data/artifacts")
     parser.add_argument("--disable-market-data", action="store_true", help="Do not call market data providers")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -63,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     vault_sync = vault_sub.add_parser("sync")
     vault_sync.add_argument("--trade-date")
     vault_sync.add_argument("--limit", type=int, default=200)
+    vault_sync.add_argument("--full", action="store_true")
+    vault_sync.add_argument("--clean", action="store_true")
     vault_daily = vault_sub.add_parser("daily")
     vault_daily.add_argument("--trade-date", required=True)
     vault_plan = vault_sub.add_parser("plan")
@@ -78,6 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
     vault_skill = vault_sub.add_parser("skill")
     vault_skill.add_argument("skill_id")
     vault_sub.add_parser("dashboard")
+    vault_sub.add_parser("graph")
+    vault_sub.add_parser("mirror-root")
+    vault_sub.add_parser("sync-all", aliases=["sync-root", "sync-private"])
 
     plan = subparsers.add_parser("plan", help="Manage trade plans")
     plan_sub = plan.add_subparsers(dest="action", required=True)
@@ -266,6 +271,15 @@ def build_parser() -> argparse.ArgumentParser:
     schedule.add_argument("--force", action="store_true")
     schedule.add_argument("--dry-run", action="store_true")
 
+    maintenance = subparsers.add_parser("maintenance", help="Run maintenance and runtime diagnostics")
+    maintenance_sub = maintenance.add_subparsers(dest="action", required=True)
+    maintenance_sub.add_parser("self-check")
+    maintenance_purge = maintenance_sub.add_parser("purge-range")
+    maintenance_purge.add_argument("--start-date", required=True)
+    maintenance_purge.add_argument("--end-date", required=True)
+    maintenance_purge.add_argument("--no-rebuild-memory", action="store_true")
+    maintenance_purge.add_argument("--no-sync-vault", action="store_true")
+
     session = subparsers.add_parser("session", help="OpenClaw-oriented session state machine")
     session_sub = session.add_subparsers(dest="action", required=True)
     session_turn = session_sub.add_parser("turn")
@@ -324,7 +338,7 @@ def main(argv: list[str] | None = None, anchor_path: Path | None = None) -> int:
         if args.action == "init":
             _print_json(app.init_vault())
         elif args.action == "sync":
-            _print_json(app.sync_vault(trade_date=args.trade_date, limit=args.limit))
+            _print_json(app.sync_vault(trade_date=args.trade_date, limit=args.limit, full=args.full, clean=args.clean))
         elif args.action == "daily":
             _print_json(app.export_daily_note(args.trade_date))
         elif args.action == "plan":
@@ -339,6 +353,12 @@ def main(argv: list[str] | None = None, anchor_path: Path | None = None) -> int:
             _print_json(app.export_memory_note(args.memory_id))
         elif args.action == "skill":
             _print_json(app.export_skill_note(args.skill_id))
+        elif args.action == "graph":
+            _print_json(app.export_graph_note())
+        elif args.action == "mirror-root":
+            _print_json(app.mirror_runtime_exports_to_repo_root())
+        elif args.action == "sync-all":
+            _print_json(app.sync_repo_snapshot())
         else:
             _print_json(app.export_dashboard_note())
         return 0
@@ -539,6 +559,20 @@ def main(argv: list[str] | None = None, anchor_path: Path | None = None) -> int:
 
     if args.command == "schedule":
         _print_json(app.run_schedule(now=args.now, force=args.force, dry_run=args.dry_run))
+        return 0
+
+    if args.command == "maintenance":
+        if args.action == "self-check":
+            _print_json(app.runtime_self_check())
+        else:
+            _print_json(
+                app.purge_records_in_date_range(
+                    args.start_date,
+                    args.end_date,
+                    rebuild_memory_views=not args.no_rebuild_memory,
+                    sync_vault_after=not args.no_sync_vault,
+                )
+            )
         return 0
 
     if args.command == "session":

@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import re
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from .analytics import (
 )
 from .config import load_runtime_config
 from .intake import (
+    MISTAKE_RULES,
     build_completeness_report,
     build_polling_bundle,
     build_reflection_prompts,
@@ -57,6 +59,7 @@ from .vault import (
     file_stem,
     render_daily_note,
     render_dashboard_note,
+    render_graph_note,
     render_health_report_note,
     render_memory_note,
     render_plan_note,
@@ -97,6 +100,45 @@ def _statement_side_kind(value: Any) -> str:
     return ""
 
 
+POSITIVE_LESSON_HINTS = (
+    "完美",
+    "平稳",
+    "拿住了",
+    "保住了收益",
+    "优先做核心",
+    "好票",
+    "说明还是要",
+)
+HIGH_CONFIDENCE_HINTS = (
+    "龙头",
+    "核心",
+    "主线",
+    "确定",
+    "确认",
+    "趋势",
+    "强度",
+    "看好",
+)
+LOW_CONFIDENCE_HINTS = (
+    "试错",
+    "玩玩",
+    "犹豫",
+    "不相信自己",
+    "慌",
+    "怕",
+    "担心",
+    "可惜",
+)
+LESSON_MISTAKE_RULES = [
+    (r"(卖飞|拿不住|拿不稳|提前卖|本来可以赚更多)", "拿不稳"),
+    (r"(破位必须走|破趋势.*先走|跌停应该要先走|不止损|扛单)", "止损拖延"),
+    (r"(只是玩玩|临时起意|随手|随便)", "计划外交易"),
+    (r"(不相信自己|犹豫|错过|不要怕)", "犹豫错失"),
+    (r"(追高|冲动|炸板票.*不着急)", "冲动追高"),
+    (r"(满仓|重仓)", "仓位过重"),
+]
+
+
 class FinanceJournalApp:
     def __init__(
         self,
@@ -120,6 +162,7 @@ class FinanceJournalApp:
         ensure_runtime_dirs(self.config)
         self.db.init_schema()
         vault_info = self.init_vault()
+        self.ensure_objective_review_subskill()
         return {
             "runtime_root": str(self.config["runtime_root"]),
             "db_path": str(self.config["db_path"]),
@@ -178,6 +221,81 @@ class FinanceJournalApp:
             (int(limit),),
         )
 
+    def _recent_memory_cells(self, limit: int = 12) -> list[dict[str, Any]]:
+        return self.db.fetchall(
+            "SELECT * FROM memory_cells ORDER BY updated_at DESC, created_at DESC LIMIT ?",
+            (int(limit),),
+        )
+
+    def _recent_memory_scenes(self, limit: int = 12) -> list[dict[str, Any]]:
+        return self.db.fetchall(
+            "SELECT * FROM memory_scenes ORDER BY updated_at DESC, created_at DESC LIMIT ?",
+            (int(limit),),
+        )
+
+    def _recent_memory_hyperedges(self, limit: int = 12) -> list[dict[str, Any]]:
+        return self.db.fetchall(
+            "SELECT * FROM memory_hyperedges ORDER BY updated_at DESC, created_at DESC LIMIT ?",
+            (int(limit),),
+        )
+
+    def _build_local_graph_prompt(self, graph_state: dict[str, Any]) -> str:
+        stats = graph_state.get("stats") or {}
+        scenes = graph_state.get("recent_scenes") or []
+        hyperedges = graph_state.get("recent_hyperedges") or []
+        skills = graph_state.get("recent_skill_cards") or []
+        memory_rows = graph_state.get("recent_memory_cells") or []
+        scene_titles = [str(item.get("title") or item.get("scene_key") or "").strip() for item in scenes if str(item.get("title") or item.get("scene_key") or "").strip()]
+        edge_labels = [str(item.get("label") or item.get("edge_key") or "").strip() for item in hyperedges if str(item.get("label") or item.get("edge_key") or "").strip()]
+        skill_titles = [str(item.get("title") or item.get("skill_id") or "").strip() for item in skills if str(item.get("title") or item.get("skill_id") or "").strip()]
+        memory_titles = [str(item.get("title") or item.get("memory_id") or "").strip() for item in memory_rows if str(item.get("title") or item.get("memory_id") or "").strip()]
+        lines = [
+            "你正在使用本地 TradeMirrorOS 账本。",
+            "每次完成记账、补充、平仓回顾、行为体检或记忆修订后，都要把结构化结果同步到本地 Obsidian vault（_runtime/obsidian-vault）。",
+            (
+                "当前数据库规模："
+                f" trades={stats.get('trade_count') or 0},"
+                f" memory_cells={stats.get('memory_count') or 0},"
+                f" scenes={stats.get('scene_count') or 0},"
+                f" hyperedges={stats.get('hyperedge_count') or 0},"
+                f" skill_cards={stats.get('skill_count') or 0}。"
+            ),
+        ]
+        if scene_titles:
+            lines.append(f"优先参考最近场景：{' / '.join(scene_titles[:5])}。")
+        if edge_labels:
+            lines.append(f"优先参考最近关系簇：{' / '.join(edge_labels[:5])}。")
+        if skill_titles:
+            lines.append(f"如需给出可执行建议，优先复用技能卡：{' / '.join(skill_titles[:5])}。")
+        if memory_titles:
+            lines.append(f"如需回忆历史相似案例，优先查看记忆单元：{' / '.join(memory_titles[:5])}。")
+        lines.extend(
+            [
+                "本轮若已经落库，回复里要明确说明：已同步本地 Obsidian，并提醒可查看 00-dashboard 与 08-graph。",
+                "不要把知识图谱当作交易信号源；它只是帮助回看历史结构、错误模式、技能沉淀与场景关系。",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _graph_state_snapshot(self, limit: int = 10) -> dict[str, Any]:
+        state = {
+            "stats": {
+                "plan_count": int((self.db.fetchone("SELECT COUNT(*) AS count FROM plans", ()) or {}).get("count") or 0),
+                "trade_count": int((self.db.fetchone("SELECT COUNT(*) AS count FROM trades", ()) or {}).get("count") or 0),
+                "review_count": int((self.db.fetchone("SELECT COUNT(*) AS count FROM reviews", ()) or {}).get("count") or 0),
+                "memory_count": int((self.db.fetchone("SELECT COUNT(*) AS count FROM memory_cells", ()) or {}).get("count") or 0),
+                "scene_count": int((self.db.fetchone("SELECT COUNT(*) AS count FROM memory_scenes", ()) or {}).get("count") or 0),
+                "hyperedge_count": int((self.db.fetchone("SELECT COUNT(*) AS count FROM memory_hyperedges", ()) or {}).get("count") or 0),
+                "skill_count": int((self.db.fetchone("SELECT COUNT(*) AS count FROM memory_skill_cards", ()) or {}).get("count") or 0),
+            },
+            "recent_scenes": self._recent_memory_scenes(limit=limit),
+            "recent_hyperedges": self._recent_memory_hyperedges(limit=limit),
+            "recent_memory_cells": self._recent_memory_cells(limit=limit),
+            "recent_skill_cards": self._recent_skill_cards(limit=limit),
+        }
+        state["prompt_text"] = self._build_local_graph_prompt(state)
+        return state
+
     def export_dashboard_note(self) -> dict[str, Any]:
         if not self._vault_enabled():
             return {"enabled": False}
@@ -188,6 +306,302 @@ class FinanceJournalApp:
         )
         path = self._vault_write("dashboard", "trade_journal_dashboard", markdown)
         return {"path": path}
+
+    def export_graph_note(self) -> dict[str, Any]:
+        if not self._vault_enabled():
+            return {"enabled": False}
+        graph_state = self._graph_state_snapshot(limit=10)
+        markdown = render_graph_note(graph_state)
+        path = self._vault_write("graph", "local_knowledge_graph_snapshot", markdown)
+        return {"path": path, "stats": graph_state.get("stats") or {}}
+
+    def _export_vault_companion_notes(self) -> dict[str, Any]:
+        if not self._vault_enabled():
+            return {}
+        return {
+            "dashboard": self.export_dashboard_note(),
+            "graph": self.export_graph_note(),
+        }
+
+    def _clear_vault_exports(self) -> dict[str, Any]:
+        dirs = ensure_vault_dirs(Path(self.config["vault_root"]))
+        deleted: list[str] = []
+        for folder in dirs.values():
+            for path in folder.glob("*.md"):
+                path.unlink()
+                deleted.append(str(path))
+        return {"deleted_count": len(deleted), "deleted_paths": deleted[:20]}
+
+    def _clear_runtime_memory_snapshots(self) -> dict[str, Any]:
+        memory_dir = Path(self.config["memory_dir"])
+        deleted: list[str] = []
+        if not memory_dir.exists():
+            return {"deleted_count": 0, "deleted_paths": []}
+        for path in memory_dir.glob("*"):
+            if path.is_file():
+                path.unlink()
+                deleted.append(str(path))
+        return {"deleted_count": len(deleted), "deleted_paths": deleted[:20]}
+
+    def _replace_tree(self, source: Path, destination: Path) -> dict[str, Any]:
+        if not source.exists():
+            raise ValueError(f"source path does not exist: {source}")
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.copytree(source, destination)
+        file_count = sum(1 for path in destination.rglob("*") if path.is_file())
+        dir_count = sum(1 for path in destination.rglob("*") if path.is_dir())
+        return {
+            "source": str(source),
+            "destination": str(destination),
+            "file_count": file_count,
+            "dir_count": dir_count,
+        }
+
+    def _file_sha1(self, path: Path) -> str:
+        digest = hashlib.sha1()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _path_state(self, path: Path, sample_limit: int = 5) -> dict[str, Any]:
+        target = Path(path).resolve()
+        state: dict[str, Any] = {"path": str(target), "exists": target.exists()}
+        if not target.exists():
+            return state
+        stat = target.stat()
+        modified_at = datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
+        if target.is_file():
+            state.update(
+                {
+                    "kind": "file",
+                    "size": stat.st_size,
+                    "modified_at": modified_at,
+                    "sha1": self._file_sha1(target),
+                }
+            )
+            return state
+        files = [item for item in target.rglob("*") if item.is_file()]
+        dirs = [item for item in target.rglob("*") if item.is_dir()]
+        sample_files = [str(item.relative_to(target)).replace("\\", "/") for item in files[:sample_limit]]
+        latest_file = max(files, key=lambda item: item.stat().st_mtime, default=None)
+        state.update(
+            {
+                "kind": "directory",
+                "file_count": len(files),
+                "dir_count": len(dirs),
+                "modified_at": modified_at,
+                "sample_files": sample_files,
+                "latest_file": str(latest_file.relative_to(target)).replace("\\", "/") if latest_file else "",
+            }
+        )
+        return state
+
+    def _compare_export_file(self, runtime_path: Path, repo_path: Path) -> dict[str, Any]:
+        runtime_state = self._path_state(runtime_path)
+        repo_state = self._path_state(repo_path)
+        same_content = bool(
+            runtime_state.get("exists")
+            and repo_state.get("exists")
+            and runtime_state.get("kind") == "file"
+            and repo_state.get("kind") == "file"
+            and runtime_state.get("sha1") == repo_state.get("sha1")
+        )
+        return {
+            "runtime": runtime_state,
+            "repo_root": repo_state,
+            "same_content": same_content,
+        }
+
+    def mirror_runtime_exports_to_repo_root(self) -> dict[str, Any]:
+        runtime_artifacts = Path(self.config["artifacts_dir"])
+        runtime_vault = Path(self.config["vault_root"])
+        root_artifacts = self.repo_root / "artifacts"
+        root_vault = self.repo_root / "obsidian-vault"
+        artifacts_result = self._replace_tree(runtime_artifacts, root_artifacts)
+        vault_result = self._replace_tree(runtime_vault, root_vault)
+        return {
+            "artifacts": artifacts_result,
+            "obsidian_vault": vault_result,
+            "repo_root": str(self.repo_root),
+        }
+
+    def sync_repo_snapshot(self) -> dict[str, Any]:
+        vault_sync = self.sync_vault(full=True, clean=True)
+        mirror = self.mirror_runtime_exports_to_repo_root()
+        self_check = self.runtime_self_check()
+        return {
+            "vault_sync": vault_sync,
+            "mirror": mirror,
+            "self_check": self_check,
+        }
+
+    def runtime_self_check(self) -> dict[str, Any]:
+        runtime_root = Path(self.config["runtime_root"]).resolve()
+        expected_runtime_root = (self.repo_root / "_runtime").resolve()
+        db_path = Path(self.config["db_path"]).resolve()
+        runtime_artifacts = Path(self.config["artifacts_dir"]).resolve()
+        runtime_memory = Path(self.config["memory_dir"]).resolve()
+        runtime_status = Path(self.config["status_dir"]).resolve()
+        runtime_vault = Path(self.config["vault_root"]).resolve()
+        repo_artifacts = (self.repo_root / "artifacts").resolve()
+        repo_vault = (self.repo_root / "obsidian-vault").resolve()
+
+        table_counts: dict[str, int] = {}
+        for table_name in (
+            "plans",
+            "trades",
+            "reviews",
+            "health_reports",
+            "memory_cells",
+            "memory_scenes",
+            "memory_hyperedges",
+            "memory_skill_cards",
+        ):
+            row = self.db.fetchone(f"SELECT COUNT(*) AS count FROM {table_name}", ()) or {}
+            table_counts[table_name] = int(row.get("count") or 0)
+
+        latest_trade = self.db.fetchone(
+            """
+            SELECT trade_id, ts_code, name, buy_date, sell_date, updated_at
+            FROM trades
+            ORDER BY COALESCE(sell_date, buy_date) DESC, updated_at DESC
+            LIMIT 1
+            """,
+            (),
+        ) or {}
+        latest_memory = self.db.fetchone(
+            """
+            SELECT memory_id, title, trade_date, updated_at
+            FROM memory_cells
+            ORDER BY trade_date DESC, updated_at DESC
+            LIMIT 1
+            """,
+            (),
+        ) or {}
+        latest_report = self.db.fetchone(
+            """
+            SELECT report_id, period_start, period_end, created_at
+            FROM health_reports
+            ORDER BY period_end DESC, created_at DESC
+            LIMIT 1
+            """,
+            (),
+        ) or {}
+
+        runtime_artifacts_state = self._path_state(runtime_artifacts)
+        repo_artifacts_state = self._path_state(repo_artifacts)
+        runtime_vault_state = self._path_state(runtime_vault)
+        repo_vault_state = self._path_state(repo_vault)
+        graph_compare = self._compare_export_file(
+            runtime_vault / "08-graph" / "local_knowledge_graph_snapshot.md",
+            repo_vault / "08-graph" / "local_knowledge_graph_snapshot.md",
+        )
+        dashboard_compare = self._compare_export_file(
+            runtime_vault / "00-dashboard" / "trade_journal_dashboard.md",
+            repo_vault / "00-dashboard" / "trade_journal_dashboard.md",
+        )
+        mirror_in_sync = bool(
+            runtime_artifacts_state.get("exists")
+            and runtime_vault_state.get("exists")
+            and repo_artifacts_state.get("exists")
+            and repo_vault_state.get("exists")
+            and runtime_artifacts_state.get("file_count") == repo_artifacts_state.get("file_count")
+            and runtime_vault_state.get("file_count") == repo_vault_state.get("file_count")
+            and graph_compare.get("same_content")
+            and dashboard_compare.get("same_content")
+        )
+
+        warnings: list[str] = []
+        if runtime_root != expected_runtime_root:
+            warnings.append("runtime_root is not repo_root/_runtime; OpenClaw may be reading a different ledger than the current repository snapshot.")
+        if not db_path.exists():
+            warnings.append("SQLite database file is missing under the resolved runtime_root.")
+        if not runtime_vault.exists():
+            warnings.append("Runtime Obsidian vault is missing; markdown exports have not been generated yet.")
+        if not mirror_in_sync:
+            warnings.append("Top-level artifacts/obsidian-vault are stale or missing; run `vault sync-all` before pushing or mirroring to cloud.")
+
+        return {
+            "status": "warning" if warnings else "ok",
+            "warnings": warnings,
+            "repo_root": str(self.repo_root),
+            "skill_root": str(self.skill_root),
+            "runtime_root": str(runtime_root),
+            "expected_runtime_root": str(expected_runtime_root),
+            "matches_repo_runtime": runtime_root == expected_runtime_root,
+            "paths": {
+                "runtime_root": self._path_state(runtime_root),
+                "db_path": self._path_state(db_path),
+                "artifacts_dir": runtime_artifacts_state,
+                "memory_dir": self._path_state(runtime_memory),
+                "status_dir": self._path_state(runtime_status),
+                "vault_root": runtime_vault_state,
+                "repo_artifacts": repo_artifacts_state,
+                "repo_obsidian_vault": repo_vault_state,
+            },
+            "database": {
+                "table_counts": table_counts,
+                "latest_trade": latest_trade,
+                "latest_memory": latest_memory,
+                "latest_report": latest_report,
+            },
+            "mirror_state": {
+                "in_sync": mirror_in_sync,
+                "graph_note": graph_compare,
+                "dashboard_note": dashboard_compare,
+            },
+            "suggested_commands": {
+                "refresh_runtime_exports": "python .\\finance-journal-orchestrator\\scripts\\finance_journal_cli.py vault sync-all",
+                "show_runtime_diagnosis": "python .\\finance-journal-orchestrator\\scripts\\finance_journal_cli.py maintenance self-check",
+                "pin_current_runtime_root": "python .\\finance-journal-orchestrator\\scripts\\finance_journal_cli.py --root .\\_runtime maintenance self-check",
+            },
+        }
+
+    def _clear_daily_artifacts_in_range(self, start_date: str, end_date: str) -> dict[str, Any]:
+        daily_root = Path(self.config["artifacts_dir"]) / "daily"
+        deleted: list[str] = []
+        if not daily_root.exists():
+            return {"deleted_count": 0, "deleted_paths": []}
+        for path in daily_root.iterdir():
+            if not path.is_dir() or not re.fullmatch(r"\d{8}", path.name or ""):
+                continue
+            if start_date <= path.name <= end_date:
+                deleted.append(str(path))
+                shutil.rmtree(path)
+        return {"deleted_count": len(deleted), "deleted_paths": deleted[:20]}
+
+    def _cleanup_stale_session_refs(self) -> None:
+        with self.db.connect() as conn:
+            conn.execute(
+                """
+                UPDATE session_threads
+                SET active_draft_id = ''
+                WHERE active_draft_id != '' AND active_draft_id NOT IN (SELECT draft_id FROM journal_drafts)
+                """
+            )
+            conn.execute(
+                """
+                UPDATE session_threads
+                SET active_entity_kind = '', active_entity_id = ''
+                WHERE active_entity_kind = 'trade' AND active_entity_id != '' AND active_entity_id NOT IN (SELECT trade_id FROM trades)
+                """
+            )
+            conn.execute(
+                """
+                UPDATE session_threads
+                SET active_entity_kind = '', active_entity_id = ''
+                WHERE active_entity_kind = 'plan' AND active_entity_id != '' AND active_entity_id NOT IN (SELECT plan_id FROM plans)
+                """
+            )
+            conn.execute(
+                """
+                UPDATE session_threads
+                SET active_entity_kind = '', active_entity_id = ''
+                WHERE active_entity_kind = 'review' AND active_entity_id != '' AND active_entity_id NOT IN (SELECT review_id FROM reviews)
+                """
+            )
 
     def export_plan_note(self, plan_id: str) -> dict[str, Any]:
         plan = self.get_plan(plan_id)
@@ -282,27 +696,179 @@ class FinanceJournalApp:
         path = self._vault_write("daily", stem, markdown)
         return {"path": path, "trade_date": token}
 
-    def sync_vault(self, trade_date: str | None = None, limit: int = 200) -> dict[str, Any]:
+    def _daily_note_dates(self) -> list[str]:
+        rows = self.db.fetchall(
+            """
+            SELECT trade_date FROM (
+                SELECT buy_date AS trade_date FROM trades WHERE buy_date IS NOT NULL AND buy_date != ''
+                UNION
+                SELECT sell_date AS trade_date FROM trades WHERE sell_date IS NOT NULL AND sell_date != ''
+                UNION
+                SELECT review_due_date AS trade_date FROM reviews WHERE review_due_date IS NOT NULL AND review_due_date != ''
+            )
+            ORDER BY trade_date DESC
+            """,
+            (),
+        )
+        return [str(row.get("trade_date") or "").strip() for row in rows if str(row.get("trade_date") or "").strip()]
+
+    def sync_vault(self, trade_date: str | None = None, limit: int = 200, full: bool = False, clean: bool = False) -> dict[str, Any]:
         if not self._vault_enabled():
             return {"enabled": False, "paths": []}
         self.init_vault()
+        cleanup: dict[str, Any] = {}
+        if clean:
+            cleanup = self._clear_vault_exports()
         paths: list[str] = []
-        for plan in self.db.fetchall("SELECT plan_id FROM plans ORDER BY updated_at DESC LIMIT ?", (int(limit),)):
+        plan_sql = "SELECT plan_id FROM plans ORDER BY updated_at DESC"
+        trade_sql = "SELECT trade_id FROM trades ORDER BY updated_at DESC"
+        review_sql = "SELECT review_id FROM reviews ORDER BY updated_at DESC"
+        memory_sql = "SELECT memory_id FROM memory_cells ORDER BY updated_at DESC"
+        skill_sql = "SELECT skill_id FROM memory_skill_cards ORDER BY updated_at DESC, created_at DESC"
+        params = () if full else (int(limit),)
+        if not full:
+            plan_sql += " LIMIT ?"
+            trade_sql += " LIMIT ?"
+            review_sql += " LIMIT ?"
+            memory_sql += " LIMIT ?"
+            skill_sql += " LIMIT ?"
+        for plan in self.db.fetchall(plan_sql, params):
             paths.append(self.export_plan_note(plan["plan_id"])["path"])
-        for trade in self.db.fetchall("SELECT trade_id FROM trades ORDER BY updated_at DESC LIMIT ?", (int(limit),)):
+        for trade in self.db.fetchall(trade_sql, params):
             paths.append(self.export_trade_note(trade["trade_id"])["path"])
-        for review in self.db.fetchall("SELECT review_id FROM reviews ORDER BY updated_at DESC LIMIT ?", (int(limit),)):
+        for review in self.db.fetchall(review_sql, params):
             paths.append(self.export_review_note(review["review_id"])["path"])
         for report in self._recent_health_reports(limit=limit):
             paths.append(self.export_report_note(report["report_id"])["path"])
-        for memory in self.db.fetchall("SELECT memory_id FROM memory_cells ORDER BY updated_at DESC LIMIT ?", (int(limit),)):
+        if full:
+            report_rows = self.db.fetchall(
+                "SELECT report_id FROM health_reports ORDER BY period_end DESC, created_at DESC",
+                (),
+            )
+            paths = [path for path in paths if "04-reports" not in path]
+            for report in report_rows:
+                paths.append(self.export_report_note(report["report_id"])["path"])
+        for memory in self.db.fetchall(memory_sql, params):
             paths.append(self.export_memory_note(memory["memory_id"])["path"])
-        for skill in self._recent_skill_cards(limit=limit):
+        for skill in self.db.fetchall(skill_sql, params):
             paths.append(self.export_skill_note(skill["skill_id"])["path"])
-        if trade_date:
-            paths.append(self.export_daily_note(trade_date)["path"])
-        paths.append(self.export_dashboard_note()["path"])
-        return {"enabled": True, "paths": paths}
+        daily_dates = [normalize_trade_date(trade_date)] if trade_date else (self._daily_note_dates() if full else [])
+        for token in daily_dates:
+            paths.append(self.export_daily_note(token)["path"])
+        companion = self._export_vault_companion_notes()
+        if companion.get("dashboard", {}).get("path"):
+            paths.append(companion["dashboard"]["path"])
+        if companion.get("graph", {}).get("path"):
+            paths.append(companion["graph"]["path"])
+        return {"enabled": True, "paths": paths, "full": bool(full), "clean": bool(clean), "cleanup": cleanup}
+
+    def purge_records_in_date_range(
+        self,
+        start_date: str,
+        end_date: str,
+        *,
+        rebuild_memory_views: bool = True,
+        sync_vault_after: bool = True,
+    ) -> dict[str, Any]:
+        start = normalize_trade_date(start_date)
+        end = normalize_trade_date(end_date)
+        if start > end:
+            raise ValueError(f"invalid date range: {start} > {end}")
+
+        plan_ids = [str(row.get("plan_id") or "") for row in self.db.fetchall("SELECT plan_id FROM plans WHERE valid_from <= ? AND valid_to >= ?", (end, start))]
+        trade_ids = [
+            str(row.get("trade_id") or "")
+            for row in self.db.fetchall(
+                """
+                SELECT trade_id FROM trades
+                WHERE (buy_date >= ? AND buy_date <= ?) OR (sell_date >= ? AND sell_date <= ?)
+                """,
+                (start, end, start, end),
+            )
+        ]
+        review_ids = [
+            str(row.get("review_id") or "")
+            for row in self.db.fetchall(
+                """
+                SELECT review_id FROM reviews
+                WHERE (review_due_date >= ? AND review_due_date <= ?) OR (sell_date >= ? AND sell_date <= ?)
+                """,
+                (start, end, start, end),
+            )
+        ]
+        report_ids = [
+            str(row.get("report_id") or "")
+            for row in self.db.fetchall(
+                "SELECT report_id FROM health_reports WHERE period_start <= ? AND period_end >= ?",
+                (end, start),
+            )
+        ]
+        snapshot_ids = [
+            str(row.get("snapshot_id") or "")
+            for row in self.db.fetchall(
+                "SELECT snapshot_id FROM market_snapshots WHERE trade_date >= ? AND trade_date <= ?",
+                (start, end),
+            )
+        ]
+        draft_ids = [
+            str(row.get("draft_id") or "")
+            for row in self.db.fetchall(
+                "SELECT draft_id FROM journal_drafts WHERE trade_date >= ? AND trade_date <= ?",
+                (start, end),
+            )
+        ]
+
+        with self.db.connect() as conn:
+            if review_ids:
+                conn.executemany("DELETE FROM reviews WHERE review_id = ?", [(item,) for item in review_ids])
+            if trade_ids:
+                conn.executemany("DELETE FROM trades WHERE trade_id = ?", [(item,) for item in trade_ids])
+            if plan_ids:
+                conn.executemany("DELETE FROM plans WHERE plan_id = ?", [(item,) for item in plan_ids])
+            if report_ids:
+                conn.executemany("DELETE FROM health_reports WHERE report_id = ?", [(item,) for item in report_ids])
+            if snapshot_ids:
+                conn.executemany("DELETE FROM market_snapshots WHERE snapshot_id = ?", [(item,) for item in snapshot_ids])
+            if draft_ids:
+                conn.executemany("DELETE FROM journal_drafts WHERE draft_id = ?", [(item,) for item in draft_ids])
+            conn.execute("DELETE FROM memory_hyperedge_members")
+            conn.execute("DELETE FROM memory_hyperedges")
+            conn.execute("DELETE FROM memory_scenes")
+            conn.execute("DELETE FROM memory_skill_cards")
+            conn.execute("DELETE FROM memory_cells_fts")
+            conn.execute("DELETE FROM memory_cells")
+
+        self._cleanup_stale_session_refs()
+        memory_cleanup = self._clear_runtime_memory_snapshots()
+        artifact_cleanup = self._clear_daily_artifacts_in_range(start, end)
+
+        rebuild: dict[str, Any] = {}
+        skillize: dict[str, Any] = {}
+        if rebuild_memory_views:
+            rebuild = self.rebuild_memory(limit=0)
+            skillize = self.skillize_memory(lookback_days=365, trade_date=end)
+
+        vault_sync: dict[str, Any] = {}
+        if sync_vault_after and self._vault_enabled():
+            vault_sync = self.sync_vault(full=True, clean=True)
+
+        return {
+            "start_date": start,
+            "end_date": end,
+            "deleted": {
+                "plans": len(plan_ids),
+                "trades": len(trade_ids),
+                "reviews": len(review_ids),
+                "health_reports": len(report_ids),
+                "market_snapshots": len(snapshot_ids),
+                "journal_drafts": len(draft_ids),
+            },
+            "memory_cleanup": memory_cleanup,
+            "artifact_cleanup": artifact_cleanup,
+            "rebuild": rebuild,
+            "skillize": skillize,
+            "vault_sync": vault_sync,
+        }
 
     def _resolve_name(self, ts_code: str, name: str | None = None) -> str:
         if name:
@@ -419,6 +985,79 @@ class FinanceJournalApp:
                 blocks.append(text)
         return "\n".join(blocks)
 
+    def _derive_mistake_tags_from_lessons(
+        self,
+        lessons_learned: Any,
+        *,
+        existing_tags: Any = None,
+        actual_return_pct: float | None = None,
+    ) -> list[str]:
+        explicit_tags = [tag for tag in self._merge_unique_tags(existing_tags) if tag != "无"]
+        if explicit_tags:
+            return explicit_tags
+        text = str(lessons_learned or "").strip()
+        if not text:
+            return []
+        derived: list[str] = []
+        for pattern, label in [*MISTAKE_RULES, *LESSON_MISTAKE_RULES]:
+            if re.search(pattern, text, re.IGNORECASE):
+                derived.append(label)
+        derived = [tag for tag in self._merge_unique_tags(derived) if tag != "无"]
+        if derived:
+            return derived
+        if (actual_return_pct is not None and actual_return_pct > 0) or any(hint in text for hint in POSITIVE_LESSON_HINTS):
+            return ["无"]
+        return []
+
+    def _derive_position_confidence(
+        self,
+        *,
+        existing_value: Any = None,
+        thesis: Any = None,
+        buy_reason: Any = None,
+        sell_reason: Any = None,
+        notes: Any = None,
+        emotion_notes: Any = None,
+        lessons_learned: Any = None,
+    ) -> int | None:
+        if existing_value not in (None, ""):
+            try:
+                return int(existing_value)
+            except (TypeError, ValueError):
+                pass
+        text_sources = [
+            str(thesis or "").strip(),
+            str(buy_reason or "").strip(),
+            str(sell_reason or "").strip(),
+            str(notes or "").strip(),
+            str(emotion_notes or "").strip(),
+            str(lessons_learned or "").strip(),
+        ]
+        combined = "\n".join(part for part in text_sources if part)
+        if not combined:
+            return 5
+        explicit = extract_field_value(
+            "position_confidence",
+            combined,
+            symbol_index=self._symbol_index(),
+            anchor_date=self._today(),
+        )
+        if explicit not in (None, ""):
+            try:
+                return int(explicit)
+            except (TypeError, ValueError):
+                pass
+        score = 6
+        if str(thesis or "").strip() or str(buy_reason or "").strip():
+            score += 1
+        if any(hint in combined for hint in HIGH_CONFIDENCE_HINTS):
+            score += 1
+        if any(hint in combined for hint in LOW_CONFIDENCE_HINTS):
+            score -= 2
+        if any(hint in str(emotion_notes or "") for hint in ("急", "慌", "怕", "犹豫")):
+            score -= 1
+        return max(3, min(score, 8))
+
     def _decision_context_from_fields(
         self,
         fields: dict[str, Any],
@@ -454,10 +1093,6 @@ class FinanceJournalApp:
             context["position_confidence"] = fields.get("position_confidence")
         elif context.get("position_confidence") in ("", None):
             context.pop("position_confidence", None)
-        if fields.get("stress_level") not in (None, ""):
-            context["stress_level"] = fields.get("stress_level")
-        elif context.get("stress_level") in ("", None):
-            context.pop("stress_level", None)
         if fields.get("position_size_pct") not in (None, ""):
             context["position_size_pct"] = fields.get("position_size_pct")
         elif context.get("position_size_pct") in ("", None):
@@ -489,8 +1124,6 @@ class FinanceJournalApp:
         payload["position_reason"] = self._append_text_block(payload.get("position_reason"), ctx.get("position_reason"))
         if payload.get("position_confidence") in (None, "") and ctx.get("position_confidence") not in (None, ""):
             payload["position_confidence"] = ctx.get("position_confidence")
-        if payload.get("stress_level") in (None, "") and ctx.get("stress_level") not in (None, ""):
-            payload["stress_level"] = ctx.get("stress_level")
         if payload.get("position_size_pct") in (None, "") and ctx.get("position_size_pct") not in (None, ""):
             payload["position_size_pct"] = ctx.get("position_size_pct")
         if not payload.get("emotion_notes") and ctx.get("emotion_notes"):
@@ -555,7 +1188,6 @@ class FinanceJournalApp:
             "observed_signals": [],
             "position_reason": "",
             "position_confidence": None,
-            "stress_level": None,
             "mistake_tags": [],
             "emotion_notes": "",
             "lessons_learned": "",
@@ -592,7 +1224,6 @@ class FinanceJournalApp:
             "observed_signals": [],
             "position_reason": "",
             "position_confidence": None,
-            "stress_level": None,
             "mistake_tags": split_tags(json_loads(trade.get("mistake_tags_json"), [])),
             "emotion_notes": trade.get("emotion_notes") or "",
             "lessons_learned": trade.get("lessons_learned") or "",
@@ -1121,14 +1752,15 @@ class FinanceJournalApp:
         summary = build_standardized_record(fields, journal_kind).get("summary") or ""
         prefix = "已记入计划账本" if entity_kind == "plan" else "已记入交易账本"
         reuse_prefix = self._session_reuse_summary(session_reuse)
-        return f"{reuse_prefix}{prefix}。{summary}"
+        sync_tail = " 已同步本地 Obsidian。" if self._vault_enabled() else ""
+        return f"{reuse_prefix}{prefix}。{summary}{sync_tail}"
 
     def _assistant_message_for_enrich(self, entity_kind: str, updated_fields: list[str], reflection_prompts: list[dict[str, Any]]) -> str:
         label = "计划" if entity_kind == "plan" else "交易"
         changed = "、".join(updated_fields[:6]) or "备注"
-        tail = ""
+        tail = " 已同步本地 Obsidian。" if self._vault_enabled() else ""
         if reflection_prompts:
-            tail = f" 下一步可继续想一想：{reflection_prompts[0].get('question') or ''}"
+            tail += f" 下一步可继续想一想：{reflection_prompts[0].get('question') or ''}"
         return f"已把补充内容沉淀回原{label}，这次更新了：{changed}.{tail}".strip()
 
     def _resolve_self_check_trade_date(
@@ -1159,7 +1791,6 @@ class FinanceJournalApp:
             "position_confidence": "把握度",
             "emotion_notes": "情绪记录",
             "mistake_tags": "错误标签",
-            "stress_level": "压力分",
             "lessons_learned": "复盘教训",
         }
         field_counts: dict[str, int] = {}
@@ -1397,8 +2028,6 @@ class FinanceJournalApp:
             merged["position_reason"] = self._append_text_block(merged.get("position_reason"), fields.get("position_reason"))
         if fields.get("position_confidence") not in (None, ""):
             merged["position_confidence"] = fields["position_confidence"]
-        if fields.get("stress_level") not in (None, ""):
-            merged["stress_level"] = fields["stress_level"]
         if fields.get("thesis"):
             merged["thesis"] = fields["thesis"]
         if fields.get("name") and merged.get("ts_code") and not merged.get("name"):
@@ -2674,10 +3303,17 @@ class FinanceJournalApp:
             for row in created:
                 if row.get("skill_id"):
                     self.export_skill_note(row["skill_id"])
+            if created:
+                companion = self._export_vault_companion_notes()
+            else:
+                companion = {}
+        else:
+            companion = {}
         return {
             "period_start": start_date,
             "period_end": end_date,
             "created_skills": created,
+            "vault_companion_notes": companion,
         }
 
     def revise_memory_cell(
@@ -2773,6 +3409,7 @@ class FinanceJournalApp:
         result = {"memory_cell": self.db.fetchone("SELECT * FROM memory_cells WHERE memory_id = ?", (memory_id,)) or {}}
         if self._vault_enabled():
             result["vault_note"] = self.export_memory_note(memory_id)
+            result["vault_companion_notes"] = self._export_vault_companion_notes()
         return result
 
     def revise_skill_card(
@@ -2840,6 +3477,7 @@ class FinanceJournalApp:
         result = {"skill_card": self.db.fetchone("SELECT * FROM memory_skill_cards WHERE skill_id = ?", (skill_id,)) or {}}
         if self._vault_enabled():
             result["vault_note"] = self.export_skill_note(skill_id)
+            result["vault_companion_notes"] = self._export_vault_companion_notes()
         return result
 
     def _attach_memory_context(self, payload: dict[str, Any], *, fields: dict[str, Any] | None = None, entity_kind: str = "", entity_id: str = "") -> dict[str, Any]:
@@ -2958,6 +3596,7 @@ class FinanceJournalApp:
             )
         if self._vault_enabled() and self.config.get("vault", {}).get("auto_export_after_plan", True):
             result["vault_note"] = self.export_plan_note(plan_id)
+            result["vault_companion_notes"] = self._export_vault_companion_notes()
         return result
 
     def get_plan(self, plan_id: str) -> dict[str, Any] | None:
@@ -3084,6 +3723,7 @@ class FinanceJournalApp:
             )
         if self._vault_enabled() and self.config.get("vault", {}).get("auto_export_after_plan", True):
             response["vault_note"] = self.export_plan_note(plan_id)
+            response["vault_companion_notes"] = self._export_vault_companion_notes()
         return response
 
     def _compute_benchmark_return(self, ts_code: str, buy_date: str, sell_date: str) -> float | None:
@@ -3119,6 +3759,462 @@ class FinanceJournalApp:
             except Exception:
                 pass
         return max((to_date(end) - to_date(start)).days, 0)
+
+    def ensure_objective_review_subskill(self) -> dict[str, Any]:
+        source_id = "objective_review_autofill_v1"
+        skill_id = self._skill_id("system_subskill", source_id)
+        existing = self.db.fetchone("SELECT created_at FROM memory_skill_cards WHERE skill_id = ?", (skill_id,)) or {}
+        summary_markdown = "\n".join(
+            [
+                "- Scope: auto-fill objective review facts that do not depend on the trader's private reasoning.",
+                "- Auto facts: holding days, realized return, benchmark return, timing alpha, market snapshot metrics when available.",
+                "- Manual only: thesis, user focus, observed signals, position reason, emotion, lessons learned.",
+                "- Suggested workflow: let the system fill objective context first, then let the user补主观逻辑和复盘教训.",
+            ]
+        )
+        payload = {
+            "skill_id": skill_id,
+            "source_kind": "system_subskill",
+            "source_id": source_id,
+            "title": "Objective Review Autofill",
+            "intent": "Auto-complete objective market and execution facts before the user writes subjective review notes.",
+            "trigger_conditions_json": json_dumps(["objective_review", "market_snapshot", "auto_review"]),
+            "do_not_use_when_json": json_dumps(
+                [
+                    "when market snapshot data is unavailable and only subjective review is needed",
+                    "when the user is editing thesis, emotion, or lessons learned by hand",
+                ]
+            ),
+            "evidence_trade_ids_json": json_dumps([]),
+            "sample_size": 0,
+            "bandit_snapshot_json": json_dumps({"kind": "system_subskill", "version": 1}),
+            "summary_markdown": summary_markdown,
+            "community_shareable": 1,
+            "created_at": existing.get("created_at") or now_ts(),
+            "updated_at": now_ts(),
+        }
+        self.db.execute(
+            """
+            INSERT OR REPLACE INTO memory_skill_cards(
+                skill_id, source_kind, source_id, title, intent, trigger_conditions_json, do_not_use_when_json,
+                evidence_trade_ids_json, sample_size, bandit_snapshot_json, summary_markdown, community_shareable,
+                created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                payload["skill_id"],
+                payload["source_kind"],
+                payload["source_id"],
+                payload["title"],
+                payload["intent"],
+                payload["trigger_conditions_json"],
+                payload["do_not_use_when_json"],
+                payload["evidence_trade_ids_json"],
+                payload["sample_size"],
+                payload["bandit_snapshot_json"],
+                payload["summary_markdown"],
+                payload["community_shareable"],
+                payload["created_at"],
+                payload["updated_at"],
+            ),
+        )
+        if self._vault_enabled():
+            self.export_skill_note(skill_id)
+        return self.db.fetchone("SELECT * FROM memory_skill_cards WHERE skill_id = ?", (skill_id,)) or payload
+
+    def capture_market_snapshot(
+        self,
+        trade_date: str,
+        ts_code: str | None = None,
+        *,
+        name: str | None = None,
+        sector_name: str | None = None,
+        sector_change_pct: float | None = None,
+    ) -> dict[str, Any]:
+        if not self.market:
+            return {}
+        payload = self.market.build_market_snapshot(
+            trade_date=trade_date,
+            ts_code=ts_code,
+            name=name,
+            sector_name=sector_name,
+            sector_change_pct=sector_change_pct,
+        )
+        snapshot_id = make_id("snapshot")
+        sh_change = _coalesce_float(payload.get("sh_change_pct"))
+        sector_change = _coalesce_float(payload.get("sector_change_pct"))
+        sector_strength_tag = ""
+        if sector_change is not None:
+            reference = sh_change or 0.0
+            if sector_change >= reference + 1.0:
+                sector_strength_tag = "stronger_than_market"
+            elif sector_change <= reference - 1.0:
+                sector_strength_tag = "weaker_than_market"
+            else:
+                sector_strength_tag = "in_line_with_market"
+        row = {
+            "snapshot_id": snapshot_id,
+            "trade_date": normalize_trade_date(payload.get("trade_date") or trade_date),
+            "ts_code": normalize_ts_code(payload.get("ts_code") or ts_code or "") if (payload.get("ts_code") or ts_code) else "",
+            "name": payload.get("name") or name or "",
+            "sh_change_pct": sh_change,
+            "cyb_change_pct": _coalesce_float(payload.get("cyb_change_pct")),
+            "hs300_change_pct": _coalesce_float(payload.get("hs300_change_pct")),
+            "zz1000_change_pct": _coalesce_float(payload.get("zz1000_change_pct")),
+            "up_down_ratio": _coalesce_float(payload.get("up_down_ratio")),
+            "advancers_count": payload.get("advancers_count"),
+            "decliners_count": payload.get("decliners_count"),
+            "flat_count": payload.get("flat_count"),
+            "limit_up_count": payload.get("limit_up_count"),
+            "limit_down_count": payload.get("limit_down_count"),
+            "broken_limit_count": payload.get("broken_limit_count"),
+            "sector_name": payload.get("sector_name") or sector_name or "",
+            "sector_change_pct": sector_change,
+            "sector_strength_tag": sector_strength_tag,
+            "raw_payload_json": json_dumps(payload.get("raw_payload", {})),
+            "created_at": now_ts(),
+        }
+        self.db.execute(
+            """
+            INSERT INTO market_snapshots(
+                snapshot_id, trade_date, ts_code, name, sh_change_pct, cyb_change_pct, hs300_change_pct, zz1000_change_pct,
+                up_down_ratio, advancers_count, decliners_count, flat_count, limit_up_count, limit_down_count, broken_limit_count,
+                sector_name, sector_change_pct, sector_strength_tag,
+                raw_payload_json, created_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["snapshot_id"],
+                row["trade_date"],
+                row["ts_code"],
+                row["name"],
+                row["sh_change_pct"],
+                row["cyb_change_pct"],
+                row["hs300_change_pct"],
+                row["zz1000_change_pct"],
+                row["up_down_ratio"],
+                row["advancers_count"],
+                row["decliners_count"],
+                row["flat_count"],
+                row["limit_up_count"],
+                row["limit_down_count"],
+                row["broken_limit_count"],
+                row["sector_name"],
+                row["sector_change_pct"],
+                row["sector_strength_tag"],
+                row["raw_payload_json"],
+                row["created_at"],
+            ),
+        )
+        return self.db.fetchone("SELECT * FROM market_snapshots WHERE snapshot_id = ?", (snapshot_id,)) or row
+
+    def _build_objective_review_payload(
+        self,
+        trade: dict[str, Any],
+        snapshot: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        skill_id = self._skill_id("system_subskill", "objective_review_autofill_v1")
+
+        def _fmt_pct(value: Any) -> str:
+            numeric = _coalesce_float(value)
+            if numeric is None:
+                return "-"
+            return f"{numeric:+.2f}%"
+
+        def _fmt_price(value: Any) -> str:
+            numeric = _coalesce_float(value)
+            if numeric is None:
+                return "-"
+            return f"{numeric:.2f}".rstrip("0").rstrip(".")
+
+        actual_return = _coalesce_float(trade.get("actual_return_pct"))
+        benchmark_return = _coalesce_float(trade.get("benchmark_return_pct"))
+        timing_alpha = _coalesce_float(trade.get("timing_alpha_pct"))
+        holding_days = trade.get("holding_days")
+
+        data_sources = ["trade_facts"]
+        if trade.get("sell_date"):
+            execution_facts = (
+                f"这笔交易于 {trade.get('buy_date') or '-'} 以 {_fmt_price(trade.get('buy_price'))} 买入，"
+                f"于 {trade.get('sell_date') or '-'} 以 {_fmt_price(trade.get('sell_price'))} 卖出。"
+            )
+        else:
+            execution_facts = (
+                f"这笔交易于 {trade.get('buy_date') or '-'} 以 {_fmt_price(trade.get('buy_price'))} 开仓，"
+                "当前尚未平仓。"
+            )
+        if actual_return is not None:
+            performance_parts = []
+            if holding_days is not None:
+                performance_parts.append(f"持有 {holding_days} 天")
+            performance_parts.append(f"实际收益 {_fmt_pct(actual_return)}")
+            performance_parts.append(f"基准收益 {_fmt_pct(benchmark_return)}" if benchmark_return is not None else "基准收益暂缺")
+            performance_parts.append(f"时机 Alpha {_fmt_pct(timing_alpha)}" if timing_alpha is not None else "时机 Alpha 暂缺")
+            performance_summary = "客观结果：" + "，".join(performance_parts) + "。"
+        else:
+            performance_summary = "客观结果：当前尚未形成闭环，暂不计算实际收益、基准收益与时机 Alpha。"
+        if benchmark_return is not None or timing_alpha is not None:
+            data_sources.append("benchmark_compare")
+
+        index_summary = ""
+        breadth_summary = ""
+        sector_summary = ""
+        market_regime_summary = ""
+        if snapshot:
+            data_sources.append("market_snapshot")
+            sh_change = _coalesce_float(snapshot.get("sh_change_pct"))
+            cyb_change = _coalesce_float(snapshot.get("cyb_change_pct"))
+            hs300_change = _coalesce_float(snapshot.get("hs300_change_pct"))
+            zz1000_change = _coalesce_float(snapshot.get("zz1000_change_pct"))
+            if any(value is not None for value in (sh_change, cyb_change, hs300_change, zz1000_change)):
+                index_summary = (
+                    f"宽基表现：上证 {_fmt_pct(sh_change)}，创业板 {_fmt_pct(cyb_change)}，"
+                    f"沪深300 {_fmt_pct(hs300_change)}，中证1000 {_fmt_pct(zz1000_change)}。"
+                )
+            advancers = snapshot.get("advancers_count")
+            decliners = snapshot.get("decliners_count")
+            flat_count = snapshot.get("flat_count")
+            breadth_segments: list[str] = []
+            if advancers is not None and decliners is not None:
+                breadth_segments.append(f"上涨 {advancers} 家、下跌 {decliners} 家")
+            if flat_count is not None:
+                breadth_segments.append(f"平盘 {flat_count} 家")
+            if snapshot.get("up_down_ratio") is not None:
+                breadth_segments.append(f"涨跌比 {snapshot.get('up_down_ratio')}")
+            if snapshot.get("limit_up_count") is not None:
+                breadth_segments.append(f"涨停 {snapshot.get('limit_up_count')} 家")
+            if snapshot.get("limit_down_count") is not None:
+                breadth_segments.append(f"跌停 {snapshot.get('limit_down_count')} 家")
+            if snapshot.get("broken_limit_count") is not None:
+                breadth_segments.append(f"炸板 {snapshot.get('broken_limit_count')} 家")
+            if breadth_segments:
+                breadth_summary = "市场广度：" + "，".join(breadth_segments) + "。"
+            if snapshot.get("sector_name") or snapshot.get("sector_change_pct") is not None:
+                sector_label = str(snapshot.get("sector_name") or "关联板块").strip()
+                strength_label = str(snapshot.get("sector_strength_tag") or "").strip()
+                sector_summary = (
+                    f"板块表现：{sector_label} {_fmt_pct(snapshot.get('sector_change_pct'))}"
+                    + (f"，相对大盘 {strength_label}。" if strength_label else "。")
+                )
+            if sh_change is not None and cyb_change is not None and snapshot.get("up_down_ratio") is not None:
+                ratio = _coalesce_float(snapshot.get("up_down_ratio")) or 0.0
+                if sh_change > 0 and cyb_change > 0 and ratio >= 1.2:
+                    market_regime_summary = "客观市场状态：指数共振偏强，市场偏风险偏好。"
+                elif sh_change < 0 and cyb_change < 0 and ratio <= 0.8:
+                    market_regime_summary = "客观市场状态：指数同步走弱，市场偏风险规避。"
+                else:
+                    market_regime_summary = "客观市场状态：指数与个股强弱分化，市场更偏结构性。"
+
+        summary_lines = [line for line in (execution_facts, performance_summary, index_summary, breadth_summary, sector_summary, market_regime_summary) if line]
+        narrative_summary = " ".join(summary_lines)
+        return {
+            "skill_id": skill_id,
+            "data_sources": data_sources,
+            "execution_facts": execution_facts,
+            "performance_summary": performance_summary,
+            "index_summary": index_summary,
+            "breadth_summary": breadth_summary,
+            "sector_summary": sector_summary,
+            "market_regime_summary": market_regime_summary,
+            "narrative_summary": narrative_summary,
+            "summary_lines": summary_lines,
+            "auto_fill_note": "客观字段已自动补全；主观逻辑、情绪、教训仍需人工确认。",
+        }
+
+    def backfill_trade_objective_context(self) -> dict[str, Any]:
+        self.ensure_objective_review_subskill()
+        summary = {
+            "trades_scanned": 0,
+            "trades_updated": 0,
+            "objective_review_filled": 0,
+            "stress_level_removed": 0,
+            "emotion_notes_merged": 0,
+        }
+        changed_trade_ids: list[str] = []
+        rows = self.db.fetchall("SELECT * FROM trades ORDER BY buy_date ASC, updated_at ASC")
+        summary["trades_scanned"] = len(rows)
+
+        with self.db.connect() as conn:
+            for trade in rows:
+                context = json_loads(trade.get("decision_context_json"), {}) or {}
+                updated_context = dict(context)
+                snapshot = None
+                if trade.get("snapshot_id"):
+                    snapshot = self.db.fetchone("SELECT * FROM market_snapshots WHERE snapshot_id = ?", (trade.get("snapshot_id"),))
+                objective_review = self._build_objective_review_payload(trade, snapshot=snapshot)
+                merged_emotion = str(trade.get("emotion_notes") or "").strip()
+                legacy_stress = updated_context.pop("stress_level", None)
+                changed = False
+                if legacy_stress not in (None, ""):
+                    summary["stress_level_removed"] += 1
+                    stress_note = f"压力感受（旧字段）：{legacy_stress}"
+                    if stress_note not in merged_emotion:
+                        merged_emotion = self._append_text_block(merged_emotion, stress_note)
+                        summary["emotion_notes_merged"] += 1
+                    changed = True
+                if updated_context.get("objective_review") != objective_review:
+                    updated_context["objective_review"] = objective_review
+                    summary["objective_review_filled"] += 1
+                    changed = True
+                if not changed and merged_emotion == str(trade.get("emotion_notes") or "").strip():
+                    continue
+                conn.execute(
+                    "UPDATE trades SET decision_context_json = ?, emotion_notes = ?, updated_at = ? WHERE trade_id = ?",
+                    (
+                        json_dumps({key: value for key, value in updated_context.items() if value not in (None, '', [], {})}),
+                        merged_emotion,
+                        now_ts(),
+                        trade.get("trade_id") or "",
+                    ),
+                )
+                changed_trade_ids.append(str(trade.get("trade_id") or ""))
+
+        for trade_id in changed_trade_ids:
+            self._sync_memory_for_entity("trade", trade_id)
+        summary["trades_updated"] = len(changed_trade_ids)
+        return summary
+
+    def backfill_trade_market_snapshots(self, *, force_refresh: bool = False) -> dict[str, Any]:
+        summary = {
+            "trades_scanned": 0,
+            "snapshots_created": 0,
+            "trades_updated": 0,
+            "skipped_without_market": 0,
+            "errors": [],
+        }
+        if not self.market:
+            summary["skipped_without_market"] = 1
+            return summary
+        rows = self.db.fetchall("SELECT * FROM trades ORDER BY buy_date ASC, updated_at ASC")
+        summary["trades_scanned"] = len(rows)
+        changed_trade_ids: list[str] = []
+        snapshot_cache: dict[str, dict[str, Any]] = {}
+
+        def _has_core_data(snapshot_row: dict[str, Any] | None) -> bool:
+            if not snapshot_row:
+                return False
+            return any(
+                snapshot_row.get(key) is not None
+                for key in ("sh_change_pct", "cyb_change_pct", "hs300_change_pct", "zz1000_change_pct", "advancers_count", "limit_up_count")
+            )
+
+        for trade in rows:
+            trade_date = trade.get("buy_date") or trade.get("sell_date") or self._today()
+            existing_snapshot = None
+            if trade.get("snapshot_id"):
+                existing_snapshot = self.db.fetchone("SELECT * FROM market_snapshots WHERE snapshot_id = ?", (trade.get("snapshot_id"),))
+            elif trade_date in snapshot_cache:
+                existing_snapshot = snapshot_cache.get(trade_date)
+            elif not force_refresh:
+                existing_snapshot = self.db.fetchone(
+                    """
+                    SELECT * FROM market_snapshots
+                    WHERE trade_date = ?
+                    ORDER BY
+                        (CASE WHEN advancers_count IS NOT NULL OR limit_up_count IS NOT NULL OR sh_change_pct IS NOT NULL THEN 1 ELSE 0 END) DESC,
+                        created_at DESC
+                    LIMIT 1
+                    """,
+                    (trade_date,),
+                )
+            needs_snapshot = force_refresh or not existing_snapshot
+            if existing_snapshot and not force_refresh:
+                needs_snapshot = not _has_core_data(existing_snapshot)
+            if not needs_snapshot:
+                snapshot = existing_snapshot or {}
+            else:
+                try:
+                    snapshot = self.capture_market_snapshot(
+                        trade_date,
+                        trade.get("ts_code"),
+                        name=trade.get("name"),
+                    )
+                except Exception as exc:
+                    summary["errors"].append(f"{trade.get('trade_id')}: {exc}")
+                    continue
+                summary["snapshots_created"] += 1
+                snapshot_cache[trade_date] = snapshot
+            context = json_loads(trade.get("decision_context_json"), {}) or {}
+            context["objective_review"] = self._build_objective_review_payload(trade, snapshot=snapshot)
+            self.db.execute(
+                "UPDATE trades SET snapshot_id = ?, decision_context_json = ?, updated_at = ? WHERE trade_id = ?",
+                (
+                    snapshot.get("snapshot_id") or "",
+                    json_dumps({key: value for key, value in context.items() if value not in (None, '', [], {})}),
+                    now_ts(),
+                    trade.get("trade_id") or "",
+                ),
+            )
+            changed_trade_ids.append(str(trade.get("trade_id") or ""))
+        for trade_id in changed_trade_ids:
+            self._sync_memory_for_entity("trade", trade_id)
+        summary["trades_updated"] = len(changed_trade_ids)
+        return summary
+
+    def backfill_trade_review_fields(self) -> dict[str, Any]:
+        summary = {
+            "trades_scanned": 0,
+            "trades_updated": 0,
+            "mistake_tags_filled": 0,
+            "position_confidence_filled": 0,
+        }
+        changed_trade_ids: list[str] = []
+        rows = self.db.fetchall("SELECT * FROM trades ORDER BY buy_date ASC, updated_at ASC")
+        summary["trades_scanned"] = len(rows)
+
+        with self.db.connect() as conn:
+            for trade in rows:
+                context = json_loads(trade.get("decision_context_json"), {}) or {}
+                updated_context = dict(context)
+                updated_context.pop("stress_level", None)
+                existing_mistake_tags = split_tags(json_loads(trade.get("mistake_tags_json"), []))
+                derived_mistake_tags = self._derive_mistake_tags_from_lessons(
+                    trade.get("lessons_learned"),
+                    existing_tags=existing_mistake_tags,
+                    actual_return_pct=_coalesce_float(trade.get("actual_return_pct")),
+                )
+                derived_confidence = self._derive_position_confidence(
+                    existing_value=updated_context.get("position_confidence"),
+                    thesis=trade.get("thesis"),
+                    buy_reason=trade.get("buy_reason"),
+                    sell_reason=trade.get("sell_reason"),
+                    notes=trade.get("notes"),
+                    emotion_notes=trade.get("emotion_notes"),
+                    lessons_learned=trade.get("lessons_learned"),
+                )
+
+                changed = False
+                if derived_mistake_tags != existing_mistake_tags:
+                    summary["mistake_tags_filled"] += 1
+                    changed = True
+                if updated_context.get("position_confidence") in (None, "") and derived_confidence is not None:
+                    updated_context["position_confidence"] = derived_confidence
+                    summary["position_confidence_filled"] += 1
+                    changed = True
+                if self._merge_unique_tags(updated_context.get("mistake_tags", [])) != self._merge_unique_tags(derived_mistake_tags):
+                    if derived_mistake_tags:
+                        updated_context["mistake_tags"] = derived_mistake_tags
+                    else:
+                        updated_context.pop("mistake_tags", None)
+                    changed = True
+                if not changed:
+                    continue
+
+                conn.execute(
+                    "UPDATE trades SET mistake_tags_json = ?, decision_context_json = ?, updated_at = ? WHERE trade_id = ?",
+                    (
+                        json_dumps(derived_mistake_tags),
+                        json_dumps({key: value for key, value in updated_context.items() if value not in (None, '', [], {})}),
+                        now_ts(),
+                        trade.get("trade_id") or "",
+                    ),
+                )
+                changed_trade_ids.append(str(trade.get("trade_id") or ""))
+
+        for trade_id in changed_trade_ids:
+            self._sync_memory_for_entity("trade", trade_id)
+        summary["trades_updated"] = len(changed_trade_ids)
+        return summary
 
     def log_trade(
         self,
@@ -3169,6 +4265,52 @@ class FinanceJournalApp:
         timing_alpha = round(actual_return - benchmark_return, 2) if actual_return is not None and benchmark_return is not None else None
         holding_days = self._compute_holding_days(normalized_buy_date, normalized_sell_date) if normalized_sell_date else None
         deviation = calculate_plan_execution_deviation(plan, float(buy_price), float(sell_price) if sell_price is not None else None)
+        journal_kind = "closed_trade" if normalized_sell_date else "open_trade"
+        derived_mistake_tags = self._derive_mistake_tags_from_lessons(
+            lessons_learned,
+            existing_tags=mistake_tags,
+            actual_return_pct=actual_return,
+        )
+        derived_position_confidence = self._derive_position_confidence(
+            existing_value=(decision_context or {}).get("position_confidence"),
+            thesis=thesis,
+            buy_reason=buy_reason,
+            sell_reason=sell_reason,
+            notes=notes,
+            emotion_notes=emotion_notes,
+            lessons_learned=lessons_learned,
+        )
+        decision_payload = self._decision_context_from_fields(
+            {
+                "ts_code": code,
+                "name": resolved_name,
+                "thesis": thesis,
+                "user_focus": (decision_context or {}).get("user_focus", []),
+                "observed_signals": (decision_context or {}).get("observed_signals", []),
+                "position_reason": (decision_context or {}).get("position_reason", ""),
+                "position_confidence": derived_position_confidence,
+                "position_size_pct": position_size_pct,
+                "emotion_notes": emotion_notes or "",
+                "mistake_tags": derived_mistake_tags,
+                "environment_tags": aligned_environment_tags,
+                "notes": notes or "",
+            },
+            journal_kind,
+            base_context=decision_context or {},
+        )
+        decision_payload["objective_review"] = self._build_objective_review_payload(
+            {
+                "buy_date": normalized_buy_date,
+                "buy_price": float(buy_price),
+                "sell_date": normalized_sell_date,
+                "sell_price": float(sell_price) if sell_price is not None else None,
+                "actual_return_pct": actual_return,
+                "benchmark_return_pct": benchmark_return,
+                "timing_alpha_pct": timing_alpha,
+                "holding_days": holding_days,
+            },
+            snapshot=snapshot,
+        )
         timestamp = now_ts()
         with self.db.connect() as conn:
             conn.execute(
@@ -3212,12 +4354,12 @@ class FinanceJournalApp:
                     timing_alpha,
                     holding_days,
                     json_dumps(deviation),
-                    json_dumps(decision_context or {}),
+                    json_dumps(decision_payload),
                     json_dumps(statement_context or {}),
                     "pending",
                     "closed" if normalized_sell_date else "open",
                     emotion_notes or "",
-                    json_dumps(split_tags(mistake_tags)),
+                    json_dumps(derived_mistake_tags),
                     lessons_learned or "",
                     notes or "",
                     timestamp,
@@ -3240,6 +4382,7 @@ class FinanceJournalApp:
         if self._vault_enabled() and self.config.get("vault", {}).get("auto_export_after_trade", True):
             trade_row["vault_note"] = self.export_trade_note(trade_id)
             trade_row["daily_vault_note"] = self.export_daily_note(normalized_buy_date)
+            trade_row["vault_companion_notes"] = self._export_vault_companion_notes()
         return trade_row
 
     def close_trade(
@@ -3270,8 +4413,54 @@ class FinanceJournalApp:
         merged_notes = "\n".join(part for part in [trade.get("notes") or "", notes or ""] if part).strip()
         merged_emotion = "\n".join(part for part in [trade.get("emotion_notes") or "", emotion_notes or ""] if part).strip()
         existing_mistakes = split_tags(json.loads(trade.get("mistake_tags_json") or "[]"))
-        merged_mistake_tags = existing_mistakes + [tag for tag in split_tags(mistake_tags) if tag not in existing_mistakes]
         merged_lessons = "\n".join(part for part in [trade.get("lessons_learned") or "", lessons_learned or ""] if part).strip()
+        merged_mistake_tags = self._derive_mistake_tags_from_lessons(
+            merged_lessons,
+            existing_tags=existing_mistakes + [tag for tag in split_tags(mistake_tags) if tag not in existing_mistakes],
+            actual_return_pct=actual_return,
+        )
+        updated_context = self._decision_context_from_fields(
+            self._trade_to_journal_fields(
+                {
+                    **trade,
+                    "sell_date": normalized_sell_date,
+                    "sell_price": float(sell_price),
+                    "sell_reason": sell_reason,
+                    "sell_position": sell_position,
+                    "emotion_notes": merged_emotion,
+                    "notes": merged_notes,
+                    "lessons_learned": merged_lessons,
+                    "mistake_tags_json": json_dumps(merged_mistake_tags),
+                }
+            ),
+            "closed_trade",
+            base_context=json_loads(trade.get("decision_context_json"), {}) or {},
+        )
+        if updated_context.get("position_confidence") in (None, ""):
+            updated_context["position_confidence"] = self._derive_position_confidence(
+                existing_value=updated_context.get("position_confidence"),
+                thesis=trade.get("thesis"),
+                buy_reason=trade.get("buy_reason"),
+                sell_reason=sell_reason or trade.get("sell_reason"),
+                notes=merged_notes,
+                emotion_notes=merged_emotion,
+                lessons_learned=merged_lessons,
+            )
+        snapshot = None
+        if trade.get("snapshot_id"):
+            snapshot = self.db.fetchone("SELECT * FROM market_snapshots WHERE snapshot_id = ?", (trade.get("snapshot_id"),))
+        updated_context["objective_review"] = self._build_objective_review_payload(
+            {
+                **trade,
+                "sell_date": normalized_sell_date,
+                "sell_price": float(sell_price),
+                "actual_return_pct": actual_return,
+                "benchmark_return_pct": benchmark_return,
+                "timing_alpha_pct": timing_alpha,
+                "holding_days": holding_days,
+            },
+            snapshot=snapshot,
+        )
         merged_statement_context = self._merge_statement_context(
             json_loads(trade.get("statement_context_json"), {}) or {},
             statement_context,
@@ -3282,7 +4471,7 @@ class FinanceJournalApp:
             SET sell_date = ?, sell_price = ?, sell_reason = ?, sell_position = ?, benchmark_return_pct = ?,
                 actual_return_pct = ?, timing_alpha_pct = ?, holding_days = ?, plan_execution_deviation_json = ?,
                 status = 'closed', updated_at = ?, emotion_notes = ?, mistake_tags_json = ?, lessons_learned = ?, notes = ?,
-                statement_context_json = ?
+                statement_context_json = ?, decision_context_json = ?
             WHERE trade_id = ?
             """,
             (
@@ -3301,6 +4490,7 @@ class FinanceJournalApp:
                 merged_lessons,
                 merged_notes,
                 json_dumps(merged_statement_context),
+                json_dumps({key: value for key, value in updated_context.items() if value not in (None, "", [], {})}),
                 trade_id,
             ),
         )
@@ -3309,6 +4499,7 @@ class FinanceJournalApp:
         if self._vault_enabled() and self.config.get("vault", {}).get("auto_export_after_trade", True):
             trade_row["vault_note"] = self.export_trade_note(trade_id)
             trade_row["daily_vault_note"] = self.export_daily_note(normalized_sell_date)
+            trade_row["vault_companion_notes"] = self._export_vault_companion_notes()
         return trade_row
 
     def enrich_trade_from_text(
@@ -3342,10 +4533,41 @@ class FinanceJournalApp:
         timing_alpha = round(actual_return - benchmark_return, 2) if actual_return is not None and benchmark_return is not None else None
         holding_days = self._compute_holding_days(normalized_buy_date, normalized_sell_date) if normalized_sell_date else None
         deviation = calculate_plan_execution_deviation(plan, buy_price, sell_price if sell_price is not None else None)
+        merged_fields["mistake_tags"] = self._derive_mistake_tags_from_lessons(
+            merged_fields.get("lessons_learned"),
+            existing_tags=merged_fields.get("mistake_tags", []),
+            actual_return_pct=actual_return,
+        )
+        merged_fields["position_confidence"] = self._derive_position_confidence(
+            existing_value=merged_fields.get("position_confidence"),
+            thesis=merged_fields.get("thesis"),
+            buy_reason=trade.get("buy_reason"),
+            sell_reason=trade.get("sell_reason"),
+            notes=merged_fields.get("notes"),
+            emotion_notes=merged_fields.get("emotion_notes"),
+            lessons_learned=merged_fields.get("lessons_learned"),
+        )
         decision_context = self._decision_context_from_fields(
             merged_fields,
             "closed_trade" if normalized_sell_date else "open_trade",
             base_context=json_loads(trade.get("decision_context_json"), {}) or {},
+        )
+        snapshot = None
+        if trade.get("snapshot_id"):
+            snapshot = self.db.fetchone("SELECT * FROM market_snapshots WHERE snapshot_id = ?", (trade.get("snapshot_id"),))
+        decision_context["objective_review"] = self._build_objective_review_payload(
+            {
+                **trade,
+                "buy_date": normalized_buy_date,
+                "buy_price": buy_price,
+                "sell_date": normalized_sell_date,
+                "sell_price": sell_price,
+                "actual_return_pct": actual_return,
+                "benchmark_return_pct": benchmark_return,
+                "timing_alpha_pct": timing_alpha,
+                "holding_days": holding_days,
+            },
+            snapshot=snapshot,
         )
         self.db.execute(
             """
@@ -3403,7 +4625,6 @@ class FinanceJournalApp:
                     "observed_signals",
                     "position_reason",
                     "position_confidence",
-                    "stress_level",
                     "mistake_tags",
                     "emotion_notes",
                     "lessons_learned",
@@ -3438,6 +4659,7 @@ class FinanceJournalApp:
         if self._vault_enabled() and self.config.get("vault", {}).get("auto_export_after_trade", True):
             response["vault_note"] = self.export_trade_note(trade_id)
             response["daily_vault_note"] = self.export_daily_note(normalized_sell_date or normalized_buy_date)
+            response["vault_companion_notes"] = self._export_vault_companion_notes()
         return response
 
     def get_trade(self, trade_id: str) -> dict[str, Any] | None:
@@ -5113,6 +6335,7 @@ class FinanceJournalApp:
         if self._vault_enabled() and created:
             payload["vault_notes"] = [self.export_review_note(item["review_id"]) for item in created if item.get("review_id")]
             payload["daily_vault_note"] = self.export_daily_note(token)
+            payload["vault_companion_notes"] = self._export_vault_companion_notes()
         return payload
 
     def list_reviews(self, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
@@ -5139,6 +6362,7 @@ class FinanceJournalApp:
         if self._vault_enabled() and self.config.get("vault", {}).get("auto_export_after_review", True):
             review_row["vault_note"] = self.export_review_note(review_id)
             review_row["daily_vault_note"] = self.export_daily_note(review_row.get("review_due_date") or review_row.get("sell_date") or self._today())
+            review_row["vault_companion_notes"] = self._export_vault_companion_notes()
         return review_row
 
     def generate_health_report(self, period_start: str, period_end: str, period_kind: str = "custom") -> dict[str, Any]:
@@ -5171,6 +6395,7 @@ class FinanceJournalApp:
         if self._vault_enabled() and self.config.get("vault", {}).get("auto_export_after_health_report", True):
             payload["vault_note"] = self.export_report_note(report_id)
             payload["dashboard_vault_note"] = self.export_dashboard_note()
+            payload["graph_vault_note"] = self.export_graph_note()
         return payload
 
     def _slot_exists(self, slot_key: str) -> bool:

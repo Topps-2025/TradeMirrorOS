@@ -15,6 +15,7 @@ VAULT_FOLDERS = {
     "daily": "05-daily",
     "memory": "06-memory",
     "skills": "07-skills",
+    "graph": "08-graph",
 }
 
 
@@ -73,13 +74,13 @@ def render_decision_context(context: dict[str, Any] | None) -> list[str]:
         return ["- None yet."]
     strategy_context = payload.get("strategy_context") if isinstance(payload.get("strategy_context"), dict) else {}
     planned_zone = payload.get("planned_zone") if isinstance(payload.get("planned_zone"), dict) else {}
+    objective_review = payload.get("objective_review") if isinstance(payload.get("objective_review"), dict) else {}
     lines = [
         f"- User focus: {', '.join(str(item) for item in payload.get('user_focus') or []) or '-'}",
         f"- Observed signals: {', '.join(str(item) for item in payload.get('observed_signals') or []) or '-'}",
         f"- Interpretation: {payload.get('interpretation') or '-'}",
         f"- Position reason: {payload.get('position_reason') or '-'}",
         f"- Position confidence: {payload.get('position_confidence') if payload.get('position_confidence') not in (None, '') else '-'}",
-        f"- Stress level: {payload.get('stress_level') if payload.get('stress_level') not in (None, '') else '-'}",
         f"- Market stage: {payload.get('market_stage') or '-'}",
         f"- Environment tags: {', '.join(str(item) for item in payload.get('environment_tags') or []) or '-'}",
         f"- Planned zone: buy {planned_zone.get('buy_zone') or '-'} / sell {planned_zone.get('sell_zone') or '-'}",
@@ -87,6 +88,18 @@ def render_decision_context(context: dict[str, Any] | None) -> list[str]:
         f"- Emotion notes: {payload.get('emotion_notes') or '-'}",
         f"- Mistake tags: {', '.join(str(item) for item in payload.get('mistake_tags') or []) or '-'}",
     ]
+    if objective_review:
+        lines.extend(
+            [
+                f"- Objective narrative: {objective_review.get('narrative_summary') or '-'}",
+                f"- Objective execution facts: {objective_review.get('execution_facts') or '-'}",
+                f"- Objective performance: {objective_review.get('performance_summary') or '-'}",
+                f"- Objective index snapshot: {objective_review.get('index_summary') or '-'}",
+                f"- Objective breadth snapshot: {objective_review.get('breadth_summary') or '-'}",
+                f"- Objective sector snapshot: {objective_review.get('sector_summary') or '-'}",
+                f"- Objective market regime: {objective_review.get('market_regime_summary') or '-'}",
+            ]
+        )
     if strategy_context:
         lines.extend(
             [
@@ -99,6 +112,35 @@ def render_decision_context(context: dict[str, Any] | None) -> list[str]:
             ]
         )
     return lines
+
+
+def trade_decision_context(trade: dict[str, Any]) -> dict[str, Any]:
+    payload = json_loads(trade.get("decision_context_json"), {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def render_trade_reason_summary(trade: dict[str, Any], context: dict[str, Any] | None = None) -> str:
+    payload = context if context is not None else trade_decision_context(trade)
+    parts: list[str] = []
+    if trade.get("buy_reason"):
+        parts.append(f"buy={trade['buy_reason']}")
+    if trade.get("sell_reason"):
+        parts.append(f"sell={trade['sell_reason']}")
+    if payload.get("position_reason"):
+        parts.append(f"position={payload['position_reason']}")
+    return " | ".join(parts) or "-"
+
+
+def render_trade_behavior_summary(trade: dict[str, Any]) -> str:
+    parts: list[str] = []
+    if trade.get("emotion_notes"):
+        parts.append(f"emotion={trade['emotion_notes']}")
+    mistake_tags = json_loads(trade.get("mistake_tags_json"), [])
+    if mistake_tags:
+        parts.append(f"mistakes={', '.join(str(item) for item in mistake_tags)}")
+    if trade.get("lessons_learned"):
+        parts.append(f"lesson={trade['lessons_learned']}")
+    return " | ".join(parts) or "-"
 
 
 def render_plan_note(plan: dict[str, Any]) -> str:
@@ -147,6 +189,7 @@ def render_trade_note(trade: dict[str, Any], plan: dict[str, Any] | None = None,
     pattern_tags = json_loads(trade.get("pattern_tags_json"), [])
     env_tags = json_loads(trade.get("environment_tags_json"), [])
     mistake_tags = json_loads(trade.get("mistake_tags_json"), [])
+    decision_context = trade_decision_context(trade)
     tags = format_tags("trade-journal", logic_tags, pattern_tags, env_tags, mistake_tags)
     header = frontmatter(
         {
@@ -175,6 +218,10 @@ def render_trade_note(trade: dict[str, Any], plan: dict[str, Any] | None = None,
         "",
         "## Setup",
         f"- Thesis: {trade.get('thesis') or '-'}",
+        f"- Buy reason: {trade.get('buy_reason') or '-'}",
+        f"- Sell reason: {trade.get('sell_reason') or '-'}",
+        f"- Buy position: {trade.get('buy_position') or '-'}",
+        f"- Sell position: {trade.get('sell_position') or '-'}",
         f"- Logic tags: {', '.join(logic_tags) or '-'}",
         f"- Pattern tags: {', '.join(pattern_tags) or '-'}",
         f"- Market stage: {trade.get('market_stage_tag') or '-'}",
@@ -182,7 +229,7 @@ def render_trade_note(trade: dict[str, Any], plan: dict[str, Any] | None = None,
         f"- Linked plan: {plan.get('plan_id') if plan else '-'}",
         "",
         "## Decision Context",
-        *render_decision_context(json_loads(trade.get("decision_context_json"), {})),
+        *render_decision_context(decision_context),
         "",
         "## Reflection",
         f"- Emotion notes: {trade.get('emotion_notes') or '-'}",
@@ -353,12 +400,19 @@ def render_daily_note(
     lines.extend(["", "## Trades"])
     if trades:
         for trade in trades:
+            decision_context = trade_decision_context(trade)
             lines.append(
                 f"- {trade.get('name') or trade.get('ts_code')}: "
                 f"buy {trade.get('buy_price') if trade.get('buy_price') is not None else '-'} / "
                 f"sell {trade.get('sell_price') if trade.get('sell_price') is not None else '-'} / "
                 f"return {trade.get('actual_return_pct') if trade.get('actual_return_pct') is not None else '-'}%"
             )
+            reason_summary = render_trade_reason_summary(trade, context=decision_context)
+            behavior_summary = render_trade_behavior_summary(trade)
+            if reason_summary != "-":
+                lines.append(f"  - Reasons: {reason_summary}")
+            if behavior_summary != "-":
+                lines.append(f"  - Behavior: {behavior_summary}")
     else:
         lines.append("- No trades.")
 
@@ -389,7 +443,7 @@ def render_daily_note(
 
 def render_dashboard_note(recent_trades: list[dict[str, Any]], recent_reports: list[dict[str, Any]], recent_skills: list[dict[str, Any]] | None = None) -> str:
     header = frontmatter({"note_type": "dashboard", "tags": ["dashboard", "trade-journal"]})
-    lines = [header, "", "# Finance Journal Dashboard", "", "## Recent Trades"]
+    lines = [header, "", "# TradeMirrorOS Dashboard", "", "## Recent Trades"]
     if recent_trades:
         for trade in recent_trades[:20]:
             lines.append(
@@ -411,5 +465,82 @@ def render_dashboard_note(recent_trades: list[dict[str, Any]], recent_reports: l
             lines.append(f"- {skill.get('title') or skill.get('skill_id')} | samples={skill.get('sample_size') or 0}")
     else:
         lines.append("- No skill cards yet.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_graph_note(graph_state: dict[str, Any]) -> str:
+    stats = graph_state.get("stats") or {}
+    scenes = graph_state.get("recent_scenes") or []
+    hyperedges = graph_state.get("recent_hyperedges") or []
+    memory_rows = graph_state.get("recent_memory_cells") or []
+    skill_rows = graph_state.get("recent_skill_cards") or []
+    prompt_text = str(graph_state.get("prompt_text") or "").strip()
+
+    header = frontmatter({"note_type": "knowledge_graph_snapshot", "tags": ["knowledge-graph", "openclaw", "trade-journal"]})
+    lines = [
+        header,
+        "",
+        "# Local Knowledge Graph Snapshot",
+        "",
+        "## Counts",
+        f"- Plans: {stats.get('plan_count') or 0}",
+        f"- Trades: {stats.get('trade_count') or 0}",
+        f"- Reviews: {stats.get('review_count') or 0}",
+        f"- Memory cells: {stats.get('memory_count') or 0}",
+        f"- Scenes: {stats.get('scene_count') or 0}",
+        f"- Hyperedges: {stats.get('hyperedge_count') or 0}",
+        f"- Skill cards: {stats.get('skill_count') or 0}",
+        "",
+        "## Recent Scenes",
+    ]
+    if scenes:
+        for scene in scenes[:10]:
+            memory_ids = json_loads(scene.get("memory_ids_json"), []) or []
+            lines.append(
+                f"- {scene.get('title') or scene.get('scene_key') or '-'} | "
+                f"type={scene.get('scene_type') or '-'} | memories={len(memory_ids)} | "
+                f"{scene.get('description') or '-'}"
+            )
+    else:
+        lines.append("- No scene snapshot yet.")
+
+    lines.extend(["", "## Recent Hyperedges"])
+    if hyperedges:
+        for edge in hyperedges[:10]:
+            tags = ", ".join(json_loads(edge.get("tags_json"), []) or []) or "-"
+            lines.append(
+                f"- {edge.get('label') or edge.get('edge_key') or '-'} | "
+                f"type={edge.get('edge_type') or '-'} | tags={tags}"
+            )
+    else:
+        lines.append("- No hyperedge snapshot yet.")
+
+    lines.extend(["", "## Recent Memory Cells"])
+    if memory_rows:
+        for row in memory_rows[:10]:
+            lines.append(
+                f"- {row.get('title') or row.get('memory_id') or '-'} | "
+                f"{row.get('memory_kind') or '-'} | date={row.get('trade_date') or '-'} | "
+                f"symbol={row.get('ts_code') or '-'}"
+            )
+    else:
+        lines.append("- No memory cells yet.")
+
+    lines.extend(["", "## Recent Skill Cards"])
+    if skill_rows:
+        for row in skill_rows[:10]:
+            lines.append(
+                f"- {row.get('title') or row.get('skill_id') or '-'} | "
+                f"samples={row.get('sample_size') or 0} | intent={row.get('intent') or '-'}"
+            )
+    else:
+        lines.append("- No skill cards yet.")
+
+    lines.extend(["", "## OpenClaw Prompt"])
+    if prompt_text:
+        lines.extend(["```text", prompt_text, "```"])
+    else:
+        lines.append("- No prompt snapshot yet.")
     lines.append("")
     return "\n".join(lines)
