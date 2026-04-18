@@ -1,64 +1,58 @@
 # OpenClaw Prompt Templates
 
-## Purpose
+更新日期：2026-04-18
 
-These templates are for the cloud OpenClaw side after you pull the public TradeMirrorOS repo.
+这些模板是给 OpenClaw 网关直接粘贴使用的。
 
-They are optimized for three recurring tasks:
+它们的目标是让 OpenClaw：
 
-1. pull the latest public code
-2. diagnose whether OpenClaw is reading the wrong `runtime_root`
-3. rebuild and mirror exports against the current repo runtime
+1. 自动识别应该读哪份同步手册
+2. 判断这次是“私有数据同步”还是“公共框架更新”
+3. 严格按手册执行 pull / push / self-check / vault sync-all
 
-Public repo:
-- <https://github.com/Topps-2025/TradeMirrorOS.git>
+优先参考：
 
-## 1. Pull Latest Public Repo
+- `finance-journal-orchestrator/references/private-sync-handbook.md`
+- `finance-journal-orchestrator/references/openclaw-sync-prompts.md`
+
+## 1. 自动检测同步手册并执行
 
 ```text
-???? TradeMirrorOS ????????? git status --short --branch ? git remote -v?????? git ?????? main??? origin/main ?? git pull --rebase ???????????????? git stash push -u -m "openclaw-before-public-sync" ???? pull?????????????????
+进入当前 finance-journal 仓库根目录。先读取 finance-journal-orchestrator/SKILL.md、finance-journal-orchestrator/references/private-sync-handbook.md、finance-journal-orchestrator/references/openclaw-sync-prompts.md。根据用户请求自动判断这是以下哪种场景：A. 本地已更新，云端需要从私有仓拉取；B. 云端碎片化记账后需要推回私有仓；C. 云端已推送，需要接管电脑自动拉取；D. 核心代码框架更新，需要推送到 TradeMirrorOS。执行前先报告你识别出的场景、目标远端、目标分支和将要运行的关键命令；执行后汇报 self-check 与 trades / memory_cells 数量。
 ```
 
-## 2. Runtime Self-Check First
+## 2. 云端从私有仓拉取最新账本
 
 ```text
-???? TradeMirrorOS ????????? python ./finance-journal-orchestrator/scripts/finance_journal_cli.py maintenance self-check??????? runtime_root ?? repo_root/_runtime???? python ./finance-journal-orchestrator/scripts/finance_journal_cli.py --root ./_runtime maintenance self-check???????????????????????????
+进入 finance-journal 私有仓库根目录，读取 finance-journal-orchestrator/references/private-sync-handbook.md。把这次任务视为“场景 A：本地已更新，云端需要拉到最新私有数据”。执行 git fetch origin private-sync、git checkout private-sync、git pull --rebase origin private-sync，然后执行 python ./finance-journal-orchestrator/scripts/finance_journal_cli.py --root ./_runtime --disable-market-data maintenance self-check。若 self-check 显示 repo-root 镜像与 runtime 不一致，再执行 vault sync-all 并重跑 self-check。最后报告当前 HEAD、runtime_root、mirror_state.in_sync、trades、memory_cells。
 ```
 
-## 3. Rebuild Runtime Exports Against Current Repo
+## 3. 云端碎片化记账后推回私有仓
 
 ```text
-???? TradeMirrorOS ????????????? _runtime ????? python ./finance-journal-orchestrator/scripts/finance_journal_cli.py --root ./_runtime vault sync-all??????? python ./finance-journal-orchestrator/scripts/finance_journal_cli.py --root ./_runtime maintenance self-check??????? artifacts?obsidian-vault ????? runtime ???
+进入 finance-journal 私有仓库根目录，读取 finance-journal-orchestrator/references/private-sync-handbook.md。把这次任务视为“场景 B：云端碎片化记账后推回私有仓”。先执行 python ./finance-journal-orchestrator/scripts/finance_journal_cli.py --root ./_runtime --disable-market-data vault sync-all，再执行 maintenance self-check。确认状态 ok 后，执行 git add -f _runtime/data/finance_journal.db _runtime/obsidian-vault，并执行 git add obsidian-vault artifacts，提交并 git push origin private-sync。最后汇报 commit hash、push 结果、trades、memory_cells。
 ```
 
-## 4. One-Shot Pull + Self-Fix
+## 4. 接管电脑自动拉取私有仓更新
 
 ```text
-???? TradeMirrorOS ????????? git ???? origin/main ??????????? maintenance self-check ?? runtime_root ??????? runtime_root ?? repo_root/_runtime???? --root ./_runtime ???? self-check????? --root ./_runtime ?? vault sync-all???????????????????????????????
+进入电脑本地的 finance-journal 私有仓库根目录，读取 finance-journal-orchestrator/references/private-sync-handbook.md。把这次任务视为“场景 C：云端已推送，需要电脑自动拉取”。执行 git fetch origin private-sync、git checkout private-sync、git pull --rebase origin private-sync，然后执行 python .\finance-journal-orchestrator\scripts\finance_journal_cli.py --root .\_runtime --disable-market-data maintenance self-check。若镜像不同步，再补跑 vault sync-all 与 self-check。最后报告当前 HEAD、runtime_root、mirror_state.in_sync、trades、memory_cells。
 ```
 
-## 5. If Directory Is Still Using The Old Repo Name
+## 5. 代码框架更新推送到 TradeMirrorOS
 
 ```text
-?????????? finance-journal???????????????????? git remote -v?git branch --show-current?python ./finance-journal-orchestrator/scripts/finance_journal_cli.py maintenance self-check???? remote ?? TradeMirrorOS ??????? runtime_root ??????????????????????
+进入当前 finance-journal 仓库根目录，读取 finance-journal-orchestrator/references/private-sync-handbook.md。把这次任务视为“场景 D：核心代码框架更新”。先检查待提交文件是否包含 _runtime/data/finance_journal.db、_runtime/obsidian-vault、obsidian-vault、artifacts；如果包含，这不是纯公共框架提交，需要提醒拆分。若只包含代码与通用文档，则切到 main，拉取 public/main，把 code-only 提交推送到 TradeMirrorOS。最后报告是否为纯公共提交、推送到哪个远端、当前 HEAD。
 ```
 
-## 6. Strict Safe Mode Template
+## 6. 一次性安全同步模板
 
 ```text
-?????????????????? TradeMirrorOS ?????????? git status --short --branch?git remote -v?python ./finance-journal-orchestrator/scripts/finance_journal_cli.py maintenance self-check??? runtime_root?db_path?repo_root/_runtime ???????????????????????
+进入当前 finance-journal 仓库根目录。先读取 finance-journal-orchestrator/references/private-sync-handbook.md，再执行 git status --short --branch 和 git remote -v。根据工作树内容判断这次是否涉及私人数据；如果涉及账本、vault、artifacts，则一律按私有仓 private-sync 工作流执行；如果只涉及代码与通用文档，则按 TradeMirrorOS public/main 工作流执行；如果混合，停止并明确拆分方案。整个过程中，把 ./_runtime 视为私有运行时真源，所有重要步骤前后都执行 self-check。
 ```
 
-## 7. English Version
-
-### Pull + diagnose
+## 7. 英文版总提示
 
 ```text
-Enter the current TradeMirrorOS repo root. Run git status --short --branch and git remote -v first. If this is a valid git repo, switch to main and pull from origin/main with git pull --rebase. Then run python ./finance-journal-orchestrator/scripts/finance_journal_cli.py maintenance self-check. If runtime_root is not repo_root/_runtime, rerun the check with --root ./_runtime and summarize the mismatch.
-```
-
-### Rebuild + align exports
-
-```text
-Enter the current TradeMirrorOS repo root and treat ./_runtime as the source of truth. Run python ./finance-journal-orchestrator/scripts/finance_journal_cli.py --root ./_runtime vault sync-all, then run python ./finance-journal-orchestrator/scripts/finance_journal_cli.py --root ./_runtime maintenance self-check. Report whether repo-root artifacts and obsidian-vault are now aligned with runtime.
+Enter the current finance-journal repo root. Read finance-journal-orchestrator/SKILL.md, finance-journal-orchestrator/references/private-sync-handbook.md, and finance-journal-orchestrator/references/openclaw-sync-prompts.md first. Decide whether this task is: (A) pull latest private runtime data from origin/private-sync to cloud, (B) push fragmented cloud journaling back to origin/private-sync, (C) pull the latest private changes onto the desktop through OpenClaw takeover, or (D) push code-only framework updates to public/main on TradeMirrorOS. Treat ./_runtime as the private runtime source of truth, run maintenance self-check before and after important sync steps, and never push private runtime files to the public remote.
 ```

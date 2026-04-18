@@ -40,3 +40,18 @@ python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --comma
 python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "maintenance self-check"
 python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "maintenance purge-range start_date=20260201 end_date=20260331"
 ```
+
+## Private / Public Repo Sync
+
+```powershell
+git fetch origin private-sync
+git checkout private-sync
+git pull --rebase origin private-sync
+git add -f _runtime/data/finance_journal.db _runtime/obsidian-vault
+git add obsidian-vault artifacts
+git push origin private-sync
+
+git checkout main
+git pull --rebase public main
+git push public main
+```
