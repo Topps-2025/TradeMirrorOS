@@ -1,74 +1,98 @@
+<div align="center">
+
 # TradeMirrorOS
 
-[English](#trademirroros) | [简体中文](README.zh-CN.md)
+**A local-first operating layer for trading memory**
 
-TradeMirrorOS is a local-first operating layer for trading memory.
+**把交易经验沉淀为长期记忆的本地优先操作层**
 
-它是一个面向交易记忆的本地优先操作层。
+[![ClawHub Live](https://img.shields.io/badge/ClawHub-Live-0ea5e9?style=flat-square)](https://clawhub.ai/topps-2025/trademirroros)
+[![Local First](https://img.shields.io/badge/Local-First-111827?style=flat-square)](#product-pillars)
+[![Trading Memory](https://img.shields.io/badge/Focus-Trading%20Memory-14532d?style=flat-square)](#why-it-exists)
+[![Bilingual](https://img.shields.io/badge/Docs-English%20%2F%20%E4%B8%AD%E6%96%87-b45309?style=flat-square)](README.zh-CN.md)
 
-- Live on ClawHub / 已上线 ClawHub: <https://clawhub.ai/topps-2025/trademirroros>
-- GitHub Repo / GitHub 仓库: <https://github.com/Topps-2025/TradeMirrorOS>
-- Chinese README / 中文说明: [`README.zh-CN.md`](README.zh-CN.md)
-- Public Copy / 对外文案: [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md) / [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
+[ClawHub](https://clawhub.ai/topps-2025/trademirroros) · [中文说明](README.zh-CN.md) · [Public Copy](PUBLIC_PAGE_COPY.md) · [项目理念](FRAMEWORK_PURPOSE_AND_VISION.md)
 
-## At a Glance / 一眼看懂
+</div>
 
-| Topic | English | 中文 |
-| --- | --- | --- |
-| Positioning | A trading-memory system for human + agent workflows. | 一个服务于人机协同工作流的交易记忆系统。 |
-| Core Idea | Turn plans, executions, reviews, mistakes, and recovered edges into durable memory instead of disposable chat context. | 把计划、执行、复盘、错误与修复路径沉淀成可持续复用的长期记忆，而不是一次性的聊天上下文。 |
-| Delivery | Local runtime, structured memory, searchable history, and reusable skill cards. | 本地运行时、结构化记忆、可检索历史，以及可复用的 skill cards。 |
-| Status | The public project page is already live on ClawHub. | 项目的公开展示页已经在 ClawHub 上线。 |
-| Safety | Local-first by default; it does not place trades or auto-push private trading data. | 默认本地优先；不替你下单，也不会自动推送你的私有交易数据。 |
+## Hero
 
-## Project Philosophy / 项目理念
+TradeMirrorOS turns plans, executions, reviews, mistakes, and recovered edges into durable memory instead of disposable chat context.
 
-- **Memory before automation**: trading improvement compounds only when experience becomes searchable, reviewable, and reusable. / **记忆先于自动化**：只有当经验可以被检索、复盘和复用时，交易能力才会真正复利。
-- **Facts before interpretation**: plans, executions, market context, and outcomes should settle before heavy conclusions are drawn. / **事实先于解释**：先沉淀计划、执行、市场环境与结果，再做高强度判断。
-- **Local-first control**: the trader stays in charge of runtime, data boundaries, and publishing decisions. / **本地优先控制**：运行时、数据边界与发布动作始终由交易者掌控。
-- **Human-agent co-evolution**: the system is designed to help a trader and an agent learn from the same evidence over time. / **人机共同进化**：让交易者与智能体围绕同一套证据长期学习、共同迭代。
+It is designed for traders who want a system that remembers how they think, how they drift, how they recover, and how they improve over time.
 
-## What You Can Build With It / 你可以如何使用它
+## Why It Exists
 
-- Capture plans, trades, reviews, and behavior reports in a conversation-first workflow. / 用对话优先的方式记录计划、交易、复盘与行为体检。
-- Organize memory with cells, scenes, hyperedges, and skill cards instead of flat notes alone. / 不只依赖平铺笔记，而是用 cells、scenes、hyperedges 与 skill cards 组织记忆。
-- Keep long-horizon context available for future journaling, review, and reminder workflows. / 为后续记录、复盘和提醒工作流持续提供长期上下文。
-- Mirror a trader's real decision path so repeated mistakes and valid edges become visible. / 映射真实决策路径，让重复错误和有效优势都能被看见。
+Most trading tools stop at records.
+TradeMirrorOS is built to preserve reasoning.
 
-## Live on ClawHub / ClawHub 已上线
+| Without a memory layer | With TradeMirrorOS |
+| --- | --- |
+| Plans disappear into chat history. | Plans become structured, queryable memory. |
+| Reviews are isolated notes. | Reviews connect to scenes, patterns, and reusable skill cards. |
+| Mistakes repeat because context fades. | Mistakes stay visible across journaling and recall workflows. |
+| Improvement depends on willpower alone. | Improvement compounds through evidence-backed memory. |
 
-TradeMirrorOS already has a live public page on ClawHub:
+## Product Pillars
+
+- **Memory before automation**: experience must become searchable, reviewable, and reusable before automation is worth trusting.
+- **Facts before interpretation**: plans, executions, market context, and outcomes settle first; heavy conclusions come later.
+- **Local-first control**: runtime, data boundaries, and publishing decisions remain under user control.
+- **Human-agent co-evolution**: trader and agent learn from the same evidence instead of restarting from a blank prompt.
+
+## What The Product Surface Looks Like
+
+| Layer | What it does |
+| --- | --- |
+| Journaling | Captures plans, trades, reviews, corrections, and behavior reports in a conversation-first workflow. |
+| Memory | Organizes history into memory cells, scenes, hyperedges, and skill cards. |
+| Retrieval | Keeps long-horizon context available for future journaling, reminders, and review loops. |
+| Export | Mirrors structured outputs into repo-friendly documentation and vault artifacts. |
+| Presentation | Ships publicly on GitHub and is already live on ClawHub. |
+
+## Who It Is For
+
+- traders building a durable review habit instead of a one-off note pile
+- human + agent workflows that need long-horizon memory instead of short context windows
+- local-first users who want visible boundaries around runtime and publishing
+- builders who want trading cognition to become inspectable, not hidden inside intuition
+
+## What It Is Not
+
+- not a signal-selling room
+- not an auto-execution agent
+- not a copy-trading system
+- not a generic note dump
+
+## Live On ClawHub
+
+TradeMirrorOS already has a live public page:
 
 - <https://clawhub.ai/topps-2025/trademirroros>
 
-Use the GitHub repository as the open documentation and code surface, and use the ClawHub page as the easiest public entry point for discovery and sharing.
+Use GitHub as the open code and documentation surface.
+Use ClawHub as the lightweight public showcase and discovery entry.
 
-把 GitHub 仓库视为公开文档与代码入口，把 ClawHub 页面视为最直接的公开展示与传播入口。
+## Core Modules
 
-## Core Modules / 核心模块
+| Module | Purpose |
+| --- | --- |
+| [`finance-journal-orchestrator/`](finance-journal-orchestrator) | Entry scripts, orchestration, and journaling workflow control |
+| [`trade-plan-assistant/`](trade-plan-assistant) | Planning support and pre-trade thinking |
+| [`trade-evolution-engine/`](trade-evolution-engine) | Reviews, reminders, and self-evolution outputs |
+| [`behavior-health-reporter/`](behavior-health-reporter) | Discipline and behavior diagnostics |
+| [`finance_journal_core/`](finance_journal_core) | Runtime storage, retrieval, memory, and export layer |
+| [`tests/`](tests) | Validation for journaling and memory workflows |
 
-- [`finance-journal-orchestrator/`](finance-journal-orchestrator): orchestration, entry scripts, and journaling workflow / 编排入口、脚本与记录流程
-- [`trade-plan-assistant/`](trade-plan-assistant): planning and pre-trade thinking / 计划制定与盘前思考
-- [`trade-evolution-engine/`](trade-evolution-engine): review, reminders, and self-evolution outputs / 复盘、提醒与自进化输出
-- [`behavior-health-reporter/`](behavior-health-reporter): discipline and behavior diagnostics / 纪律与行为体检
-- [`finance_journal_core/`](finance_journal_core): runtime storage, retrieval, memory, and export layer / 运行时存储、检索、记忆与导出层
-- [`tests/`](tests): validation for journaling and memory workflows / 记录与记忆工作流的验证用例
+## Read More
 
-## Read More / 延伸阅读
-
+- [`README.zh-CN.md`](README.zh-CN.md)
 - [`FRAMEWORK_PURPOSE_AND_VISION.md`](FRAMEWORK_PURPOSE_AND_VISION.md)
 - [`TRADE_MEMORY_ARCHITECTURE.md`](TRADE_MEMORY_ARCHITECTURE.md)
 - [`IMPLEMENTED_FEATURES.md`](IMPLEMENTED_FEATURES.md)
 - [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md)
 - [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
 
-## What It Is Not / 它不是什么
+## Encoding Note
 
-- not a signal-selling room / 不是喊单群
-- not an auto-execution agent / 不是自动执行 Agent
-- not a copy-trading system / 不是跟单系统
-- not a generic note dump / 不是通用笔记堆放处
-
-TradeMirrorOS is a mirror for trading cognition and a durable operating layer for evidence-based improvement.
-
-TradeMirrorOS 的目标，是成为交易认知的镜子，以及一个服务于证据驱动成长的长期操作层。
+Documentation files are stored as UTF-8 with LF line endings so Chinese and English content stays stable across GitHub, editors, and sync workflows.
