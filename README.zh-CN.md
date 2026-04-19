@@ -1,94 +1,76 @@
 # TradeMirrorOS（中文说明）
 
-更新日期：2026-04-18
+[中文](#trademirroros中文说明) | [English README](README.md)
 
 TradeMirrorOS 是一个面向交易记忆的本地优先操作层。
 
-它会把你的计划、执行、错误、有效路径与复盘循环重新映射回你自己，让这些内容不再淹没在聊天记录里，而是变成可持续保存、可检索、可复用的长期资产。
+它希望解决的不是“再做一个交易工具”，而是一个更根本的问题：
+如何让计划、执行、复盘、错误、修复路径和有效经验，不再散落在聊天记录与零碎笔记里，而是沉淀为可以持续复用的长期记忆。
 
-- 公共仓库：<https://github.com/Topps-2025/TradeMirrorOS.git>
+- ClawHub 展示页（已上线）：<https://clawhub.ai/topps-2025/trademirroros>
+- GitHub 仓库：<https://github.com/Topps-2025/TradeMirrorOS>
 - 英文 README：[`README.md`](README.md)
-- 对外介绍文案：[`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md) / [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md)
+- 对外文案：[`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md) / [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md)
 
-## 为什么叫 TradeMirrorOS
+## 一句话定位
 
-- `Trade`：它聚焦的是交易行为，而不是通用聊天记忆层。
-- `Mirror`：它会把你的历史行为、认知、错误与有效路径重新映射回来。
-- `OS`：它扮演的是一个操作层，而不是单点工具。
+TradeMirrorOS 面向的是“人 + 智能体”协同的交易工作流。
+它不是为了替你交易，而是为了把你的交易过程变成结构化、可检索、可复盘、可复用的记忆系统。
 
-用更直白的话说，TradeMirrorOS 是一个服务于人机共演化的交易记忆操作系统。
+## 项目理念
 
-## 它是什么
+- **记忆先于自动化**：交易能力的提升，首先来自经验的复利；经验只有被沉淀成可检索、可复盘、可复用的记忆，才真正有价值。
+- **事实先于解释**：先记录计划、执行、市场环境与结果，再做更重的归因、评价与结论。
+- **本地优先控制**：运行时、数据边界、同步方式和发布动作，默认都由用户自己掌控。
+- **人机共同进化**：系统的目标，是让交易者与智能体围绕同一套证据不断学习，而不是只消费一次性的 prompt 输出。
 
-- 以对话为优先的计划、交易、复盘与纠错记录方式
-- 基于 SQLite 和 Markdown 导出的结构化存储
-- 由 memory cells、scenes、hyperedges 和 skill cards 组成的长程记忆层
-- 会随数据库同步更新的本地知识图谱快照
-- 面向 OpenClaw 的日常记录、复盘与召回编排
+## 它能做什么
+
+- 用对话优先的方式记录计划、交易、复盘、纠错与行为体检
+- 用 memory cells、scenes、hyperedges 和 skill cards 组织长期记忆
+- 为未来的提醒、复盘、决策支持提供可持续的长期上下文
+- 映射真实决策路径，让重复错误、有效 setup、行为偏差和可复用优势逐渐变得清晰
+
+## 为什么这件事重要
+
+很多交易系统只关心“这次赚了还是亏了”。
+TradeMirrorOS 更关心的是：
+为什么会做这个决定、当时看到了什么、忽略了什么、哪些路径可以保留、哪些错误正在重复。
+
+换句话说，它试图把交易成长从“短期反馈”推进到“长期记忆操作系统”。
+
+## 已上线 ClawHub
+
+TradeMirrorOS 已经在 ClawHub 上线：
+
+- <https://clawhub.ai/topps-2025/trademirroros>
+
+GitHub 仓库更适合作为公开文档、源码与设计说明入口；
+ClawHub 页面则更适合作为外部展示、分享和快速访问入口。
+
+## 核心模块
+
+- [`finance-journal-orchestrator/`](finance-journal-orchestrator)：编排入口、脚本与记录流程
+- [`trade-plan-assistant/`](trade-plan-assistant)：计划制定与盘前思考
+- [`trade-evolution-engine/`](trade-evolution-engine)：复盘、提醒与自进化输出
+- [`behavior-health-reporter/`](behavior-health-reporter)：纪律与行为体检
+- [`finance_journal_core/`](finance_journal_core)：运行时存储、检索、记忆与导出层
+- [`tests/`](tests)：记录与记忆工作流的验证用例
+
+## 延伸阅读
+
+- [`FRAMEWORK_PURPOSE_AND_VISION.md`](FRAMEWORK_PURPOSE_AND_VISION.md)
+- [`TRADE_MEMORY_ARCHITECTURE.md`](TRADE_MEMORY_ARCHITECTURE.md)
+- [`IMPLEMENTED_FEATURES.md`](IMPLEMENTED_FEATURES.md)
+- [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
+- [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md)
 
 ## 它不是什么
 
-- 不是喊单系统
-- 不是自动交易 Agent
-- 不只是流水账
-- 不是通用笔记堆放区
+- 不是喊单群
+- 不是自动执行 Agent
+- 不是跟单系统
+- 不是一个通用笔记堆放处
 
-它是一个服务于交易工作的认知镜像层 + 长程记忆层。
-
-## 运行时目录与仓库镜像快照
-
-最重要的操作区分是：
-
-- 实时运行目录：`_runtime/`
-- 适合 Git 同步的镜像快照：仓库根目录下的 `artifacts/` 与 `obsidian-vault/`
-
-实时数据库和实时 Obsidian 导出都生成在 `_runtime/` 下。
-仓库根目录的 `artifacts/` 与 `obsidian-vault/` 是镜像快照，用来让 Git 在多台机器之间携带这些结果。
-
-如果 OpenClaw 指向了错误的 `runtime_root`，即便仓库本身已经是最新状态，它仍可能读到旧账本。
-
-## 关键命令
-
-```powershell
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py init
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py session turn --session-key qq:user_a --trade-date 20260410 --text "在回调 setup 买入 603083"
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --full --clean
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync-all
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py maintenance self-check
-python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "vault sync-all"
-python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "maintenance self-check"
-```
-
-说明：
-
-- `vault sync-all` 会重建 `_runtime/obsidian-vault`，并把镜像导出同步到仓库根目录的 `obsidian-vault/` 与 `artifacts/`
-- `maintenance self-check` 用来确认 OpenClaw / 本地运行环境使用的 `runtime_root` 是否正确
-
-## 推荐的本地同步流程
-
-1. 把交易记录写入或导入 `_runtime/data/finance_journal.db`
-2. 运行 `vault sync-all`
-3. 提交并推送镜像后的仓库快照
-4. 在另一台机器或 OpenClaw 云端环境中运行 `maintenance self-check`
-
-## 当前架构
-
-- `finance-journal-orchestrator/`：面向 OpenClaw 的入口、网关脚本与参考资料
-- `trade-plan-assistant/`：计划创建与历史计划参考
-- `trade-evolution-engine/`：交易复盘、提醒与自进化输出
-- `behavior-health-reporter/`：行为与纪律报告
-- `finance_journal_core/`：运行时、存储、记忆、检索与 vault 导出
-- `tests/`：用于交易日志与记忆工作流的本地校验
-
-## 公开 / 私有同步策略
-
-- 公共 GitHub（`origin/main`）现在承载的是 TradeMirrorOS 的代码与文档界面。
-- 如有需要，私有同步分支仍可继续携带运行时镜像与敏感账本快照。
-- `_runtime*`、`*.db` 与券商导出文件默认保持忽略。
-
-## 验证方式
-
-```powershell
-python -m compileall finance_journal_core finance-journal-orchestrator\scripts tests
-python -m unittest discover -s tests -v
-```
+TradeMirrorOS 更像一个交易认知镜像层：
+让你看见自己的历史、看见自己的模式、看见自己的偏差，并在更长的时间尺度上持续进化。

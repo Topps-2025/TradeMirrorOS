@@ -1,87 +1,74 @@
 # TradeMirrorOS
 
+[English](#trademirroros) | [简体中文](README.zh-CN.md)
+
 TradeMirrorOS is a local-first operating layer for trading memory.
 
-It mirrors your plans, executions, mistakes, effective paths, and review loops back to you so they become durable, searchable, and reusable instead of disappearing into chat history.
+它是一个面向交易记忆的本地优先操作层。
 
-- Public repo: <https://github.com/Topps-2025/TradeMirrorOS.git>
-- Chinese README: [`README.zh-CN.md`](README.zh-CN.md)
-- Promo copy: [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md) / [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
+- Live on ClawHub / 已上线 ClawHub: <https://clawhub.ai/topps-2025/trademirroros>
+- GitHub Repo / GitHub 仓库: <https://github.com/Topps-2025/TradeMirrorOS>
+- Chinese README / 中文说明: [`README.zh-CN.md`](README.zh-CN.md)
+- Public Copy / 对外文案: [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md) / [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
 
-## Why the name
+## At a Glance / 一眼看懂
 
-- `Trade`: this is for trading behavior, not a general chat memory layer.
-- `Mirror`: it reflects your historical behavior, cognition, errors, and valid paths back to you.
-- `OS`: it acts as an operating layer, not a single-purpose utility.
+| Topic | English | 中文 |
+| --- | --- | --- |
+| Positioning | A trading-memory system for human + agent workflows. | 一个服务于人机协同工作流的交易记忆系统。 |
+| Core Idea | Turn plans, executions, reviews, mistakes, and recovered edges into durable memory instead of disposable chat context. | 把计划、执行、复盘、错误与修复路径沉淀成可持续复用的长期记忆，而不是一次性的聊天上下文。 |
+| Delivery | Local runtime, structured memory, searchable history, and reusable skill cards. | 本地运行时、结构化记忆、可检索历史，以及可复用的 skill cards。 |
+| Status | The public project page is already live on ClawHub. | 项目的公开展示页已经在 ClawHub 上线。 |
+| Safety | Local-first by default; it does not place trades or auto-push private trading data. | 默认本地优先；不替你下单，也不会自动推送你的私有交易数据。 |
 
-In plain English, TradeMirrorOS is a trading-memory operating system for human-machine co-evolution.
+## Project Philosophy / 项目理念
 
-## What it is
+- **Memory before automation**: trading improvement compounds only when experience becomes searchable, reviewable, and reusable. / **记忆先于自动化**：只有当经验可以被检索、复盘和复用时，交易能力才会真正复利。
+- **Facts before interpretation**: plans, executions, market context, and outcomes should settle before heavy conclusions are drawn. / **事实先于解释**：先沉淀计划、执行、市场环境与结果，再做高强度判断。
+- **Local-first control**: the trader stays in charge of runtime, data boundaries, and publishing decisions. / **本地优先控制**：运行时、数据边界与发布动作始终由交易者掌控。
+- **Human-agent co-evolution**: the system is designed to help a trader and an agent learn from the same evidence over time. / **人机共同进化**：让交易者与智能体围绕同一套证据长期学习、共同迭代。
 
-- conversation-first journaling for plans, trades, reviews, and corrections
-- structured storage backed by SQLite and markdown exports
-- long-term memory with memory cells, scenes, hyperedges, and skill cards
-- local knowledge-graph snapshots that update with the database
-- OpenClaw-friendly orchestration for daily capture, review, and recall
+## What You Can Build With It / 你可以如何使用它
 
-## What it is not
+- Capture plans, trades, reviews, and behavior reports in a conversation-first workflow. / 用对话优先的方式记录计划、交易、复盘与行为体检。
+- Organize memory with cells, scenes, hyperedges, and skill cards instead of flat notes alone. / 不只依赖平铺笔记，而是用 cells、scenes、hyperedges 与 skill cards 组织记忆。
+- Keep long-horizon context available for future journaling, review, and reminder workflows. / 为后续记录、复盘和提醒工作流持续提供长期上下文。
+- Mirror a trader's real decision path so repeated mistakes and valid edges become visible. / 映射真实决策路径，让重复错误和有效优势都能被看见。
 
-- not a signal-calling system
-- not an auto-trading agent
-- not just a ledger
-- not a generic note dump
+## Live on ClawHub / ClawHub 已上线
 
-It is a cognitive mirror plus long-term memory layer for trading work.
+TradeMirrorOS already has a live public page on ClawHub:
 
-## Runtime vs Repo Snapshot
+- <https://clawhub.ai/topps-2025/trademirroros>
 
-The most important operational distinction is:
+Use the GitHub repository as the open documentation and code surface, and use the ClawHub page as the easiest public entry point for discovery and sharing.
 
-- live runtime: `_runtime/`
-- git-friendly mirror snapshot: `artifacts/` and `obsidian-vault/` at repo root
+把 GitHub 仓库视为公开文档与代码入口，把 ClawHub 页面视为最直接的公开展示与传播入口。
 
-The live database and live Obsidian exports are generated under `_runtime/`.
-The repo-root `artifacts/` and `obsidian-vault/` are mirrored snapshots that exist so git can carry them across machines.
+## Core Modules / 核心模块
 
-If OpenClaw points at the wrong `runtime_root`, it can read an older ledger even when the repository itself is up to date.
+- [`finance-journal-orchestrator/`](finance-journal-orchestrator): orchestration, entry scripts, and journaling workflow / 编排入口、脚本与记录流程
+- [`trade-plan-assistant/`](trade-plan-assistant): planning and pre-trade thinking / 计划制定与盘前思考
+- [`trade-evolution-engine/`](trade-evolution-engine): review, reminders, and self-evolution outputs / 复盘、提醒与自进化输出
+- [`behavior-health-reporter/`](behavior-health-reporter): discipline and behavior diagnostics / 纪律与行为体检
+- [`finance_journal_core/`](finance_journal_core): runtime storage, retrieval, memory, and export layer / 运行时存储、检索、记忆与导出层
+- [`tests/`](tests): validation for journaling and memory workflows / 记录与记忆工作流的验证用例
 
-## Key Commands
+## Read More / 延伸阅读
 
-```powershell
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py init
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py session turn --session-key qq:user_a --trade-date 20260410 --text "Bought 603083 on a pullback setup"
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync --full --clean
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py vault sync-all
-python .\finance-journal-orchestrator\scripts\finance_journal_cli.py maintenance self-check
-python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "vault sync-all"
-python .\finance-journal-orchestrator\scripts\finance_journal_gateway.py --command "maintenance self-check"
-```
+- [`FRAMEWORK_PURPOSE_AND_VISION.md`](FRAMEWORK_PURPOSE_AND_VISION.md)
+- [`TRADE_MEMORY_ARCHITECTURE.md`](TRADE_MEMORY_ARCHITECTURE.md)
+- [`IMPLEMENTED_FEATURES.md`](IMPLEMENTED_FEATURES.md)
+- [`PUBLIC_PAGE_COPY.md`](PUBLIC_PAGE_COPY.md)
+- [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
 
-## Recommended Local Sync Flow
+## What It Is Not / 它不是什么
 
-1. Write or import trades into `_runtime/data/finance_journal.db`.
-2. Run `vault sync-all` to rebuild the runtime vault and mirror exports to repo root.
-3. Commit and push the mirrored repo snapshot.
-4. On another machine or in OpenClaw cloud, pull the repo and run `maintenance self-check`.
+- not a signal-selling room / 不是喊单群
+- not an auto-execution agent / 不是自动执行 Agent
+- not a copy-trading system / 不是跟单系统
+- not a generic note dump / 不是通用笔记堆放处
 
-## Current Architecture
+TradeMirrorOS is a mirror for trading cognition and a durable operating layer for evidence-based improvement.
 
-- `finance-journal-orchestrator/`: OpenClaw-facing entry, gateway scripts, and references
-- `trade-plan-assistant/`: plan creation and historical reference
-- `trade-evolution-engine/`: trade reviews, reminders, self-evolution outputs
-- `behavior-health-reporter/`: behavior and discipline reports
-- `finance_journal_core/`: runtime, storage, memory, retrieval, and vault export
-- `tests/`: local validation for journaling and memory workflows
-
-## Public / Private Sync Policy
-
-- Public GitHub (`origin/main`) is now the TradeMirrorOS code and documentation surface.
-- Private sync branches can still carry runtime mirrors and sensitive ledger snapshots when needed.
-- `_runtime*`, `*.db`, and broker exports remain ignored by default.
-
-## Validation
-
-```powershell
-python -m compileall finance_journal_core finance-journal-orchestrator\scripts tests
-python -m unittest discover -s tests -v
-```
+TradeMirrorOS 的目标，是成为交易认知的镜子，以及一个服务于证据驱动成长的长期操作层。

@@ -1,49 +1,40 @@
 # TradeMirrorOS Public Copy
 
-## Short Intro
+## One-liner
 
-TradeMirrorOS is a local-first trading memory operating layer.
+TradeMirrorOS is a local-first operating layer that turns trading experience into durable memory.
 
-It does not trade for you.
-It mirrors you back to yourself.
+## Core Message
 
-Every journal entry, review, correction, and repeated path can be turned into structured memory, local graph context, and reusable trading skill cards.
-
-Project repo: <https://github.com/Topps-2025/TradeMirrorOS.git>
-
-## Promo Version
-
-Markets do not get easier just because models get stronger.
-What changes the game is whether your experience can compound.
-
-TradeMirrorOS is built around one belief:
-trading improvement should not depend on scattered notes, short chat context, or vague intuition.
-It should run on a durable operating layer that keeps your plans, executions, mistakes, recoveries, and repeatable edges alive over time.
+TradeMirrorOS is built on a simple belief:
+trading improvement should not depend on scattered notes, short chat context, or vague intuition alone.
+It should run on a system that keeps plans, executions, reviews, mistakes, corrections, and repeated edges alive over time.
 
 That is why the name matters:
 
-- `Trade`: this is for real trading behavior
-- `Mirror`: it reflects your own history, cognition, mistakes, and valid paths back to you
-- `OS`: it is an operating layer for long-term memory, not a tiny helper tool
+- `Trade`: it is grounded in real trading behavior
+- `Mirror`: it reflects your decisions, biases, mistakes, and valid paths back to you
+- `OS`: it is an operating layer for long-horizon memory, not a one-off helper tool
 
-TradeMirrorOS is not:
+## What It Offers
 
-- a signal room
-- an auto-execution agent
-- a plain bookkeeping sheet
+- conversation-first journaling for plans, trades, reviews, and behavior reports
+- structured memory with cells, scenes, hyperedges, and skill cards
+- local-first control over runtime, data boundaries, and publishing decisions
+- a bridge between daily trading work and durable long-term learning
 
-It is a cognitive mirror plus long-horizon memory layer for human-agent trading workflows.
+## What It Is Not
 
-Each completed trade journal can become more than a record:
+- not a signal-selling room
+- not an auto-trading bot
+- not a copy-trading product
+- not a generic note archive
 
-- a structured ledger entry
-- a searchable memory cell
-- a scene inside a local knowledge graph
-- a reusable skill card distilled from evidence
+## Live Page
 
-With OpenClaw integration, journaling can automatically settle into the local Obsidian vault and mirrorable repo snapshot, so your cloud runtime and local workspace can stay aligned instead of drifting apart.
+TradeMirrorOS is already live on ClawHub:
 
-If you want a trading system that helps you see yourself more clearly, remember longer, and evolve with evidence rather than noise, start here.
+- <https://clawhub.ai/topps-2025/trademirroros>
 
-Repo: <https://github.com/Topps-2025/TradeMirrorOS.git>
+Repo: <https://github.com/Topps-2025/TradeMirrorOS>
 Chinese intro: [`PUBLIC_PAGE_COPY.zh-CN.md`](PUBLIC_PAGE_COPY.zh-CN.md)
